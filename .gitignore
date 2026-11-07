@@ -1,0 +1,73 @@
+# ===== Build output (CMake / JUCE) =====
+build/
+cmake-build-*/
+out/
+CMakeUserPresets.json
+compile_commands.json
+*.o
+*.obj
+*.a
+*.lib
+*.dll
+*.exe
+*.so
+*.dylib
+*.app/
+
+# ===== IDE files =====
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln
+*.vcxproj
+*.vcxproj.*
+*.vc.db
+*.VC.db
+ipch/
+# VS Code
+.vscode/
+# CLion / JetBrains
+.idea/
+*.iml
+*.ipr
+*.iws
+# Xcode
+*.xcworkspace/
+*.xcodeproj/
+xcuserdata/
+# Other
+*.swp
+*.swn
+*~
+.settings/
+.project
+.cproject
+.classpath
+*.code-workspace
+
+# ===== JUCE =====
+JuceVersionHistory.txt
+JucePluginDefines.h
+*.jucer.bak
+
+# ===== OS files =====
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+# Windows
+Thumbs.db
+ehthumbs.db
+desktop.ini
+$RECYCLE.BIN/
+# Linux
+*~
+
+# ===== Misc =====
+*.log
+*.tmp
+*.temp
+.cache/
