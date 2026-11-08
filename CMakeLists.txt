@@ -35,6 +35,80 @@ FetchContent_Declare(
 FetchContent_MakeAvailable(JUCE)
 
 # ------------------------------------------------------------------------------
+# third_party: Plaits DSP engine + stmlib, built as static libraries.
+#
+# Both projects are included as "plaits/..." and "stmlib/...", so the include
+# root is third_party/ itself.
+#
+# The plaits_dsp file list comes from the Plaits project's own host build
+# (third_party/plaits/test/makefile, CC_FILES), minus plaits_test.cc (the test
+# harness) and the stmlib / stm_audio_bootloader files that live outside this
+# tree. The TEST define also comes from that makefile (g++ -DTEST): it makes
+# plaits/user_data.h use mock flash functions instead of the STM32F37x
+# headers, which is how Plaits builds for the desktop.
+# ------------------------------------------------------------------------------
+
+# stmlib: DSP math library (MIT). GLOBbed because it is a separate project;
+# once third_party/stmlib/ is populated this picks up every .cc file in it.
+file(GLOB_RECURSE STMLIB_SOURCES CONFIGURE_DEPENDS
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stmlib/*.cc)
+
+add_library(stmlib STATIC ${STMLIB_SOURCES})
+target_include_directories(stmlib
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
+
+# plaits_dsp: the Plaits voice + all engines (plaits/dsp/**) plus the
+# generated resource tables (wavetables, FM patches, lookup tables).
+add_library(plaits_dsp STATIC
+    third_party/plaits/dsp/voice.cc
+    third_party/plaits/dsp/chords/chord_bank.cc
+    third_party/plaits/dsp/engine/additive_engine.cc
+    third_party/plaits/dsp/engine/bass_drum_engine.cc
+    third_party/plaits/dsp/engine/chord_engine.cc
+    third_party/plaits/dsp/engine/fm_engine.cc
+    third_party/plaits/dsp/engine/grain_engine.cc
+    third_party/plaits/dsp/engine/hi_hat_engine.cc
+    third_party/plaits/dsp/engine/modal_engine.cc
+    third_party/plaits/dsp/engine/noise_engine.cc
+    third_party/plaits/dsp/engine/particle_engine.cc
+    third_party/plaits/dsp/engine/snare_drum_engine.cc
+    third_party/plaits/dsp/engine/speech_engine.cc
+    third_party/plaits/dsp/engine/string_engine.cc
+    third_party/plaits/dsp/engine/swarm_engine.cc
+    third_party/plaits/dsp/engine/virtual_analog_engine.cc
+    third_party/plaits/dsp/engine/waveshaping_engine.cc
+    third_party/plaits/dsp/engine/wavetable_engine.cc
+    third_party/plaits/dsp/engine2/chiptune_engine.cc
+    third_party/plaits/dsp/engine2/phase_distortion_engine.cc
+    third_party/plaits/dsp/engine2/six_op_engine.cc
+    third_party/plaits/dsp/engine2/string_machine_engine.cc
+    third_party/plaits/dsp/engine2/virtual_analog_vcf_engine.cc
+    third_party/plaits/dsp/engine2/wave_terrain_engine.cc
+    third_party/plaits/dsp/fm/algorithms.cc
+    third_party/plaits/dsp/fm/dx_units.cc
+    third_party/plaits/dsp/physical_modelling/modal_voice.cc
+    third_party/plaits/dsp/physical_modelling/resonator.cc
+    third_party/plaits/dsp/physical_modelling/string.cc
+    third_party/plaits/dsp/physical_modelling/string_voice.cc
+    third_party/plaits/dsp/speech/lpc_speech_synth.cc
+    third_party/plaits/dsp/speech/lpc_speech_synth_controller.cc
+    third_party/plaits/dsp/speech/lpc_speech_synth_phonemes.cc
+    third_party/plaits/dsp/speech/lpc_speech_synth_words.cc
+    third_party/plaits/dsp/speech/naive_speech_synth.cc
+    third_party/plaits/dsp/speech/sam_speech_synth.cc
+    third_party/plaits/resources.cc)
+target_include_directories(plaits_dsp
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
+target_compile_definitions(plaits_dsp
+    PUBLIC
+        TEST)  # Host-build mode, per third_party/plaits/test/makefile.
+target_link_libraries(plaits_dsp
+    PUBLIC
+        stmlib)
+
+# ------------------------------------------------------------------------------
 # Plugin target
 #
 # VST3 is built everywhere; AU is only enabled on macOS.
@@ -83,6 +157,7 @@ target_compile_definitions(Mutable
 target_link_libraries(Mutable
     PRIVATE
         juce::juce_audio_utils
+        plaits_dsp
     PUBLIC
         juce::juce_recommended_config_flags
         juce::juce_recommended_lto_flags
