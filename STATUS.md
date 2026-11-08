@@ -18,5 +18,4 @@ Known issues:
   local testing. Code signing is a Phase 7 item.
 
 Next:
-1. Phase 2: Plaits integration. Copy plaits + stmlib into third_party/ with license
-   files, wrap the Plaits voice, handle 48 kHz, play one note from MIDI.
+1. - Phase 2 in progress on branch phase-2-plaits-voice: plaits + stmlib copied unmodified into third_party/. Next: add them to CMake as a static library.
