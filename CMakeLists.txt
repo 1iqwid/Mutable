@@ -43,20 +43,33 @@ FetchContent_MakeAvailable(JUCE)
 # The plaits_dsp file list comes from the Plaits project's own host build
 # (third_party/plaits/test/makefile, CC_FILES), minus plaits_test.cc (the test
 # harness) and the stmlib / stm_audio_bootloader files that live outside this
-# tree. The TEST define also comes from that makefile (g++ -DTEST): it makes
-# plaits/user_data.h use mock flash functions instead of the STM32F37x
-# headers, which is how Plaits builds for the desktop.
+# tree. TEST (also from that makefile's g++ -DTEST) is set on the stmlib
+# target and flows downstream to plaits_dsp and the plugin: it selects
+# portable C code paths over ARM assembly and keeps plaits/user_data.h away
+# from the STM32F37x headers - i.e. how Plaits builds for the desktop.
 # ------------------------------------------------------------------------------
 
-# stmlib: DSP math library (MIT). GLOBbed because it is a separate project;
-# once third_party/stmlib/ is populated this picks up every .cc file in it.
-file(GLOB_RECURSE STMLIB_SOURCES CONFIGURE_DEPENDS
-    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/stmlib/*.cc)
-
-add_library(stmlib STATIC ${STMLIB_SOURCES})
+# stmlib: DSP math library (MIT). stmlib is mostly header-only; exactly these
+# 3 .cc files are compiled, matching the Plaits project's own host build
+# (third_party/plaits/test/makefile: PACKAGES = ... stmlib/utils ... stmlib/dsp ...).
+# stmlib/system/ (bootloader_utils.cc, system_clock.cc) is STM32 firmware
+# code (flash programming, system clock) and is NOT part of the host build.
+add_library(stmlib STATIC
+    third_party/stmlib/dsp/atan.cc
+    third_party/stmlib/dsp/units.cc
+    third_party/stmlib/utils/random.cc)
 target_include_directories(stmlib
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
+# TEST: host-build mode, per third_party/plaits/test/makefile (g++ -c -DTEST).
+# Selects the portable C paths in stmlib headers (e.g. Clip16/Sqrt in
+# stmlib/dsp/dsp.h) instead of their ARM inline-assembly #else branches, and
+# plaits/user_data.h's mock flash API instead of the STM32F37x headers.
+# PUBLIC so it flows downstream to every target that links stmlib, i.e.
+# plaits_dsp and the plugin.
+target_compile_definitions(stmlib
+    PUBLIC
+        TEST)
 
 # plaits_dsp: the Plaits voice + all engines (plaits/dsp/**) plus the
 # generated resource tables (wavetables, FM patches, lookup tables).
@@ -101,12 +114,23 @@ add_library(plaits_dsp STATIC
 target_include_directories(plaits_dsp
     PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}/third_party)
-target_compile_definitions(plaits_dsp
-    PUBLIC
-        TEST)  # Host-build mode, per third_party/plaits/test/makefile.
 target_link_libraries(plaits_dsp
     PUBLIC
-        stmlib)
+        stmlib)  # Also inherits TEST via stmlib's PUBLIC definition.
+
+# MSVC's <cmath> only defines M_PI when _USE_MATH_DEFINES is set beforehand
+# (GCC/Clang always define it, which is how Plaits' own desktop test build
+# compiles). Plaits/stmlib use M_PI unguarded — e.g. stmlib/dsp/filter.h:54,
+# stmlib/dsp/cosine_oscillator.h:54, plaits/dsp/oscillator/sine_oscillator.h:183.
+# MSVC-only; has no effect on the macOS build.
+if(MSVC)
+    target_compile_definitions(stmlib
+        PUBLIC
+            _USE_MATH_DEFINES)
+    target_compile_definitions(plaits_dsp
+        PUBLIC
+            _USE_MATH_DEFINES)
+endif()
 
 # ------------------------------------------------------------------------------
 # Plugin target

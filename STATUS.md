@@ -36,9 +36,28 @@ Task 1: CMake targets for Plaits + stmlib
   stmlib". Every plaits DSP file includes stmlib headers (stmlib/stmlib.h,
   stmlib/dsp/filter.h, stmlib/utils/buffer_allocator.h, ...), so nothing
   compiles until the stmlib sources exist.
-- stmlib target uses GLOB_RECURSE + CONFIGURE_DEPENDS, so once the sources
-  are dropped in, the next configure picks them up automatically.
-- Awaiting decision: where the stmlib sources come from.
+- stmlib sources are now in third_party/stmlib/ (936 files, MIT LICENSE present).
+  stmlib is mostly header-only; the target compiles exactly 3 .cc files
+  (dsp/atan.cc, dsp/units.cc, utils/random.cc), matching the Plaits host build
+  packages (stmlib/utils, stmlib/dsp). stmlib/system/ is STM32 firmware
+  (flash programming, system clock) and is excluded.
+- First MSVC build failed in stmlib: stmlib/dsp/dsp.h:137/142/154 -
+  C4235/C2059 on ARM inline asm (ssat/usat/vsqrt.f32). Root cause: those asm
+  blocks sit in the #else branch of #ifdef TEST, and TEST was defined only on
+  plaits_dsp, not on stmlib (CMake PUBLIC definitions flow downstream to
+  consumers, NOT upstream to dependencies).
+- RESOLVED: target_compile_definitions(stmlib PUBLIC TEST) applied (see
+  CMakeLists.txt). stmlib now builds cleanly on MSVC (stmlib.lib).
+- Build attempt 2: plaits_dsp - 35 of 37 .cc files compile. 2 files fail,
+  both on MSVC-incompatible constructs in third_party (NO changes made yet):
+  1. stmlib/utils/dsp.h:38-84 - `__attribute__((always_inline))` (GCC/Clang
+     only; MSVC C3646/C2059 with cascading C2084/C2440). Only included by
+     plaits/dsp/engine/waveshaping_engine.cc:34, which is required (Waveshaping
+     engine is a Voice member in voice.h, registered in voice.cc).
+  2. plaits/resources.cc:4032 - `const int32_t* const lookup_table_i32_table[]
+     = {};` zero-length array (MSVC C2466). Nothing in the codebase indexes
+     this table (only the extern in resources.h), but resources.cc itself is
+     required (6 DSP headers include plaits/resources.h for wavetables/LUTs).
 
 Known issues:
 - plaits copy has no LICENSE/README file (per-file headers say MIT); need MIT
@@ -46,7 +65,7 @@ Known issues:
 - No sound yet; no wrapper/DSP code written (Task 2+).
 
 Next:
-1. Get stmlib sources into third_party/stmlib/ (decision pending).
-2. Build; if ARM-firmware compile errors appear, show them for review before
-   changing anything.
+1. Decide how to handle the 2 MSVC-incompatible third_party constructs
+   (see above) - minimal patches vs shadow copies.
+2. Rebuild and get plaits_dsp + plugin linking on Windows.
 3. Commit: "Phase 2: Plaits + stmlib as static libraries in CMake".
