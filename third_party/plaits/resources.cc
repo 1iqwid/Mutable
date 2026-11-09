@@ -4029,8 +4029,9 @@ const int16_t* const lookup_table_i16_table[] = {
 
 
 
-const int32_t* const lookup_table_i32_table[] = {
-};
+// MSVC patch (see third_party/PATCHES.md): C++ has no zero-length arrays,
+// so this unused table gets a single null element instead of an empty one.
+const int32_t* const lookup_table_i32_table[] = { nullptr };
 
 const int8_t lut_lpc_excitation_pulse[] = {
        0,      0,      0,      0,

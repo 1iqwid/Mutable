@@ -49,23 +49,33 @@ Task 1: CMake targets for Plaits + stmlib
 - RESOLVED: target_compile_definitions(stmlib PUBLIC TEST) applied (see
   CMakeLists.txt). stmlib now builds cleanly on MSVC (stmlib.lib).
 - Build attempt 2: plaits_dsp - 35 of 37 .cc files compile. 2 files fail,
-  both on MSVC-incompatible constructs in third_party (NO changes made yet):
+  both on MSVC-incompatible constructs in third_party:
   1. stmlib/utils/dsp.h:38-84 - `__attribute__((always_inline))` (GCC/Clang
-     only; MSVC C3646/C2059 with cascading C2084/C2440). Only included by
-     plaits/dsp/engine/waveshaping_engine.cc:34, which is required (Waveshaping
-     engine is a Voice member in voice.h, registered in voice.cc).
-  2. plaits/resources.cc:4032 - `const int32_t* const lookup_table_i32_table[]
-     = {};` zero-length array (MSVC C2466). Nothing in the codebase indexes
-     this table (only the extern in resources.h), but resources.cc itself is
-     required (6 DSP headers include plaits/resources.h for wavetables/LUTs).
+     only; MSVC C3646/C2059 with cascading C2084/C2440).
+  2. plaits/resources.cc:4032 - zero-length array (MSVC C2466). Nothing
+     indexes this table (only the extern in resources.h).
+- RESOLVED with minimal patches (documented in third_party/PATCHES.md; all
+  license headers untouched):
+  1. dsp.h - new STMLIB_ALWAYS_INLINE macro: expands to nothing on MSVC
+     (comment notes __forceinline cannot follow the declarator), keeps
+     __attribute__((always_inline)) on GCC/Clang.
+  2. resources.cc - `lookup_table_i32_table[] = {}` -> `{ nullptr }`.
+- Build attempt 3: SUCCESS, no new errors (build/patches_build.log,
+  EXITCODE=0). plaits_dsp.lib grew 96,560 -> 968,976 bytes (resources.cc now
+  compiles in). VST3 bundle: build/Mutable_artefacts/Release/VST3/Mutable.vst3
+  (5.5 MB) + Contents/Resources/moduleinfo.json.
 
 Known issues:
 - plaits copy has no LICENSE/README file (per-file headers say MIT); need MIT
   license text + THIRD_PARTY_NOTICES entry (Phase 7 release item).
 - No sound yet; no wrapper/DSP code written (Task 2+).
+- Unverified: plugin not yet re-tested in a DAW now that Plaits code is
+  linked into the binary; macOS build not yet checked (only MSVC/Windows so
+  far).
 
 Next:
-1. Decide how to handle the 2 MSVC-incompatible third_party constructs
-   (see above) - minimal patches vs shadow copies.
-2. Rebuild and get plaits_dsp + plugin linking on Windows.
-3. Commit: "Phase 2: Plaits + stmlib as static libraries in CMake".
+1. Commit (suggested message: "Phase 2: Plaits + stmlib as static libraries
+   in CMake").
+2. Task 2: thin Plaits voice wrapper with a clean render function, 48 kHz
+   SRC, engine/harmonics/timbre/morph parameter mapping, play one MIDI note.
+3. Sanity-load the plugin in a DAW (expected: loads, still no sound).
