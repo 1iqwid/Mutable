@@ -68,14 +68,153 @@ Task 1: CMake targets for Plaits + stmlib
 Known issues:
 - plaits copy has no LICENSE/README file (per-file headers say MIT); need MIT
   license text + THIRD_PARTY_NOTICES entry (Phase 7 release item).
-- No sound yet; no wrapper/DSP code written (Task 2+).
 - Unverified: plugin not yet re-tested in a DAW now that Plaits code is
   linked into the binary; macOS build not yet checked (only MSVC/Windows so
   far).
 
+Task 2b: PlaitsVoice wrapper (COMPLETE)
+- Source/PlaitsVoice.h + Source/PlaitsVoice.cpp added to the plugin target.
+- Heap-allocated plaits::Voice (large, DISALLOW_COPY_AND_ASSIGN) + 16 KB
+  char buffer + BufferAllocator, created in prepare() (never on the audio
+  thread).
+- Public API: prepare(double), setEngine(int 0..23), setParams(harmonics,
+  timbre, morph), noteOn(midiNote, velocity), noteOff(), setLevel(float),
+  setUseExternalLevel(bool), render(out, aux, numSamples).
+- render() runs Plaits in chunks of kMaxBlockSize (24) at 48 kHz, converts
+  int16 Frame out/aux to float, then resamples to the host rate.
+- Resampler in its own small class (LinearResampler) using
+  juce::Interpolators::Linear, one per channel, easy to swap later.
+  The JUCE GenericInterpolator IS stateful (tracks subSamplePos and
+  lastInputSamples[2] across calls).  Fixed: removed the per-call reset()
+  that was destroying the fractional position and causing a click at every
+  block boundary.  The resampler now carries its state forward automatically,
+  producing a continuous output stream.
+  LinearResampler::process() now returns the number of input samples
+  consumed (per JUCE API), and render() memmoves any unconsumed samples
+  to the front of the scratch buffer for the next call.
+- Trigger/level: trigger_patched=true (RISING_EDGE/HIGH/LOW),
+  level_patched=false by default (accent=velocity, LPG uses ProcessPing →
+  play, hold, decay).  New setLevel(float) + setUseExternalLevel(bool):
+  when external level is enabled, level_patched=true and the LPG uses
+  Process (no built-in decay), so our ADSR (Phase 3) can drive release.
+- No allocation, locks, or file I/O in render().
+- Builds clean on MSVC (Release).  VST3: build/Mutable_artefacts/Release/VST3/
+  Mutable.vst3.
+
+Known issues / unverified:
+- Resampler discontinuity fix is verified by code inspection (JUCE source
+  confirms statefulness), but NOT yet audited in a DAW.  Listen for clicks
+  at block boundaries when testing.
+- External level path (useExternalLevel_=true) not yet exercised in a DAW.
+- macOS build not yet checked (only MSVC/Windows so far).
+
 Next:
-1. Commit (suggested message: "Phase 2: Plaits + stmlib as static libraries
-   in CMake").
-2. Task 2: thin Plaits voice wrapper with a clean render function, 48 kHz
-   SRC, engine/harmonics/timbre/morph parameter mapping, play one MIDI note.
-3. Sanity-load the plugin in a DAW (expected: loads, still no sound).
+1. Commit (suggested message: "Phase 2: Plaits voice wrapper with stateful
+   resampler and external level support").
+2. Task 2c: wire PlaitsVoice into PluginProcessor (single voice, one MIDI
+   note at a time), test in a DAW.
+3. Task 3: polyphony (8-voice pool via JUCE synthesiser), ADSR envelope per
+   voice, pitch bend, mod wheel, sustain pedal.
+
+## Plaits API notes (Task 2a, read-only investigation)
+
+Source: `third_party/plaits/dsp/voice.{h,cc}`, `engine/engine.h`,
+`dsp/dsp.h`, `stmlib/utils/buffer_allocator.h`, `stmlib/dsp/hysteresis_quantizer.h`.
+
+Voice public API (voice.h:159-254):
+  `Voice(); ~Voice();`
+  `struct Frame { short out; short aux; };`
+  `void Init(stmlib::BufferAllocator* allocator);`
+  `void ReloadUserData();`
+  `void Render(const Patch& patch, const Modulations& modulations, Frame* frames, size_t size);`
+  `inline int active_engine() const;`
+  `DISALLOW_COPY_AND_ASSIGN(Voice);`
+
+Patch struct (voice.h:125-137):
+  float note;                    // MIDI note number (48=C3, 60=C4)
+  float harmonics;               // 0..1
+  float timbre;                  // 0..1
+  float morph;                   // 0..1
+  float frequency_modulation_amount;  // -1..+1
+  float timbre_modulation_amount;     // -1..+1
+  float morph_modulation_amount;      // -1..+1
+  int engine;                    // 0..23
+  float decay;                   // 0..1 (LPG decay length)
+  float lpg_colour;              // 0..1 (LPG HF bleed)
+
+Modulations struct (voice.h:139-154):
+  float engine;                  // 0..1 (quantized to engine index)
+  float note;                    // semitone offset (V/OCT)
+  float frequency;               // -1..+1 (FM amount)
+  float harmonics;               // -1..+1
+  float timbre;                  // -1..+1
+  float morph;                   // -1..+1
+  float trigger;                 // 0..1 gate (>0.3 on, <0.1 off)
+  float level;                   // 0..1 (accent/level)
+  bool frequency_patched;
+  bool timbre_patched;
+  bool morph_patched;
+  bool trigger_patched;
+  bool level_patched;
+
+Sample rate & block size (dsp.h:36-51):
+  kSampleRate = 48000.0f
+  kCorrectedSampleRate = 47872.34f (hardware I2S error compensation)
+  kMaxBlockSize = 24  (max samples per Render call)
+  kBlockSize = 12      (firmware DAC block size)
+  a0 = (440.0f / 8.0f) / kCorrectedSampleRate
+
+Render output: `Frame` = two `short` (16-bit) values: `out` (main), `aux` (aux).
+Render writes `size` frames (max 24) into caller-allocated `Frame* frames`.
+Internal float buffers: `out_buffer_[kMaxBlockSize]`, `aux_buffer_[kMaxBlockSize]`.
+
+Engine selection (voice.cc:37-88, engine.h:94-129):
+  kMaxEngines = 24 (voice.h:69)
+  EngineRegistry<kMaxEngines> engines_ (voice.h:248)
+  stmlib::HysteresisQuantizer2 engine_quantizer_ (voice.h:230)
+  Init: engines_.Init(); then 24x engines_.RegisterInstance(...) calls.
+  All engines share the same BufferAllocator space (allocator->Free() before
+  each engine Init, voice.cc:69-71).
+  Render: engine_index = engine_quantizer_.Process(patch.engine, engine_cv_);
+          Engine* e = engines_.get(engine_index);
+  Quantizer: Init(engines_.size(), 0.05f, true) (voice.cc:73)
+  Engine base class (engine.h:78-92):
+    virtual void Init(stmlib::BufferAllocator* allocator) = 0;
+    virtual void Reset() = 0;
+    virtual void LoadUserData(const uint8_t* user_data) = 0;
+    virtual void Render(const EngineParameters&, float* out, float* aux,
+                        size_t size, bool* already_enveloped) = 0;
+    PostProcessingSettings post_processing_settings;
+  EngineParameters (engine.h:52-59):
+    int trigger;   // TriggerState: LOW=0, RISING_EDGE=1, UNPATCHED=2, HIGH=4
+    float note; float timbre; float morph; float harmonics; float accent;
+
+Memory (stmlib/utils/buffer_allocator.h:36-83):
+  BufferAllocator wraps a raw buffer + size; Allocate<T>() bumps a pointer.
+  Firmware uses char shared_buffer[16384] (plaits.cc:56),
+  BufferAllocator allocator(shared_buffer, 16384) (plaits.cc:142).
+  All 24 engines share this 16 KB space.
+
+Trigger & note (voice.cc:90-270):
+  Trigger: modulations.trigger (0..1) delayed by kTriggerDelay=5 samples.
+    Rising edge >0.3, falling <0.1. If trigger_patched=true, internal
+    envelope is used; else TRIGGER_UNPATCHED passed to engine.
+  Note: modulations.note = semitone offset (V/OCT). Combined:
+    p.note = ApplyModulations(patch.note + note, ...) where
+    note = (modulations.note + previous_note_) * 0.5f (low-passed).
+    Final range: -119..+120 semitones (voice.cc:202-203).
+  Level: modulations.level (0..1) compressed to accent:
+    compressed_level = 1.3f*level / (0.3f+fabsf(level)), clamped 0..1.
+    If level_patched, used as accent; else default 0.8f (voice.cc:160-162).
+  Engine CV: modulations.engine (0..1) feeds quantizer as engine_cv_.
+
+Engine index order (voice.cc:40-65):
+  0=VirtualAnalogVCF, 1=PhaseDistortion, 2/3/4=SixOp (x3),
+  5=WaveTerrain, 6=StringMachine, 7=Chiptune,
+  8=VirtualAnalog, 9=Waveshaping, 10=FM, 11=Grain,
+  12=Additive, 13=Wavetable, 14=Chord, 15=Speech,
+  16=Swarm, 17=Noise, 18=Particle, 19=String, 20=Modal,
+  21=BassDrum, 22=SnareDrum, 23=HiHat
+
+Note unit: MIDI note number. patch.note = base note. modulations.note =
+semitone offset. NoteToFrequency(midi_note) = a0*0.25f*SemitonesToRatio(midi_note-9.0f).

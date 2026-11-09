@@ -168,7 +168,9 @@ target_sources(Mutable
         Source/PluginProcessor.h
         Source/PluginProcessor.cpp
         Source/PluginEditor.h
-        Source/PluginEditor.cpp)
+        Source/PluginEditor.cpp
+        Source/PlaitsVoice.h
+        Source/PlaitsVoice.cpp)
 
 # Not using web views or curl yet (matches the JUCE CMake example defaults).
 target_compile_definitions(Mutable
