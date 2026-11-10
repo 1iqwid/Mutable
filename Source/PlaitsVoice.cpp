@@ -42,8 +42,10 @@ void PlaitsVoice::prepare (double hostSampleRate)
     // Reset resamplers and note / scratch state.
     resamplerOut_.reset (hostSampleRate);
     resamplerAux_.reset (hostSampleRate);
-    noteOn_       = false;
-    scratchCount_ = 0;
+    noteOn_          = false;
+    retrigger_       = false;
+    lastTriggerHigh_ = false;
+    scratchCount_    = 0;
 }
 
 void PlaitsVoice::setEngine (int engineIndex)
@@ -65,17 +67,17 @@ void PlaitsVoice::noteOn (int midiNote, float velocity)
     midiNote_ = midiNote;
     velocity_ = velocity < 0.0f ? 0.0f : (velocity > 1.0f ? 1.0f : velocity);
 
-    if (noteOn_)
+    if (lastTriggerHigh_)
     {
-        // Already triggered — Plaits' internal trigger_state_ is latched high.
-        // Set the retrigger flag so render() flushes the delay line before
-        // re-asserting the trigger, creating a clean false→true edge.
+        // Plaits' internal trigger_state_ is still latched high from a
+        // previous render (either noteOn_ was true, or noteOff() was called
+        // without a render in between — the voice-stealing case).  Set the
+        // retrigger flag so render() flushes the 5-slot trigger delay line
+        // before re-asserting trigger=1.0f, producing a clean rising edge.
         retrigger_ = true;
     }
-    else
-    {
-        noteOn_ = true;
-    }
+
+    noteOn_ = true;
 }
 
 void PlaitsVoice::noteOff ()
@@ -216,6 +218,12 @@ void PlaitsVoice::render (float* out, float* aux, int numSamples)
         }
         totalIn += toGen;
     }
+
+    // Record the trigger value actually sent to Plaits on this render call.
+    // Used by noteOn() to detect the voice-stealing case (noteOff → noteOn
+    // with no render between them), where lastTriggerHigh_ is still true
+    // from the previous render even though noteOn_ is now false.
+    lastTriggerHigh_ = (mod.trigger > 0.1f);
 
     // ---- Step 2: Resample to host rate ------------------------------------
     //

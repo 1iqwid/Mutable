@@ -173,13 +173,69 @@ Known issues / unverified (2c):
   to write trigger=0.0f for 5 samples before the next noteOn's trigger=1.0f.
   See the retrigger_ flag logic in PlaitsVoice.cpp for the pattern.
 
+Task 3a: Polyphony + per-voice ADSR (COMPLETE)
+- Source/PlaitsSynthVoice.h + .cpp: juce::SynthesiserVoice subclass owning
+  one PlaitsVoice and one juce::ADSR (attack 5 ms, decay 200 ms, sustain 0.7,
+  release 300 ms).  External-level mode: ADSR value multiplied into the output
+  and fed to PlaitsVoice::setLevel() each sample.
+  startNote triggers ADSR + PlaitsVoice::noteOn.
+  stopNote(allowTailOff) starts ADSR release; voice is cleared via
+  clearCurrentNote() once the ADSR goes idle (or immediately if !allowTailOff).
+- MutableAudioProcessor now holds a juce::Synthesiser with 8 PlaitsSynthVoice
+  instances (kNumVoices = 8) and one "AnySound" that matches every
+  note/channel.
+- prepareToPlay: calls synth.setCurrentPlaybackSampleRate and iterates all
+  voices calling prepare(rate).  Scratch buffers are preallocated inside
+  PlaitsVoice (kScratchSize = 8192) — no allocation in processBlock.
+- processBlock: snapshots engine/harmonics/timbre/morph/outGain from APVTS
+  into a PlaitsSynthVoice::Parameters struct and calls setParameters on every
+  voice before synth.renderNextBlock.  Output scaled by outGain; channel 0
+  copied to channels 1..N-1.
+- Silence-before-prepare and NaN/inf guard preserved from Task 2b.
+- NOTE: voice count is a compile-time constant of 8 for now; will become
+  selectable in Phase 3 (task 3b).
+
+Polyphony bug fix (COMPLETE)
+- BUG: plugin sounded monophonic — pressing several keys at once only played
+  one note.  ROOT CAUSE: PlaitsSynthVoice::renderNextBlock() rendered directly
+  into the shared output buffer (outputBuffer.getWritePointer(0)) and OVERWROTE
+  it.  But JUCE's Synthesiser::renderVoices() clears the buffer once, then calls
+  renderNextBlock() on every voice with that same buffer, and the
+  SynthesiserVoice::renderNextBlock contract (juce_Synthesiser.h:183-189) is
+  that each voice must ADD its samples.  So the last active voice clobbered
+  all the others.
+- FIX: PlaitsSynthVoice now renders into a PRIVATE mono scratch buffer
+  (scratch_, pre-sized in prepare() to 8192 samples on the message thread so
+  the audio path never allocates), applies the ADSR there, then ACCUMULATES
+  into every output channel with juce::FloatVectorOperations::add().  All 8
+  voices now sum together.
+  - PlaitsSynthVoice.h: added scratch_ member, ensureScratch() helper,
+    kMaxBlockSamples = 8192.
+  - PlaitsSynthVoice.cpp: prepare() pre-sizes scratch_; renderNextBlock()
+    renders into scratch_ and adds into output channels 0..N-1.
+  - No changes to PlaitsVoice, the processor, or third_party/.
+- Rebuilt Mutable_VST3 (Release) — 0 errors (only pre-existing C4100 'layouts'
+  warning in PluginProcessor.cpp).
+- NOTE: voice count is a compile-time constant of 8 for now; will become
+  selectable in Phase 3 (task 3b).
+
+Unverified (3a):
+- 8 simultaneous notes not yet tested in a DAW (CPU headroom on heavy
+  engines such as Particle / Swarm / SixOp).
+- Polyphony fix (voices now summing) not yet heard in a DAW — needs the
+  "press 3-4 keys, all should sound" check.
+- Voice-stealing edge case (noteOff → noteOn with no render between them)
+  is handled by PlaitsVoice::lastTriggerHigh_ / retrigger_ but has not been
+  exercised in a DAW yet.
+- ADSR values are fixed defaults; they will become APVTS parameters in Phase 4.
+
 Next:
-1. Commit (suggested message: "Phase 2: fix retrigger bug — second note
-   silent due to latched trigger_state_").
-2. Verify in DAW: play note, release, play same note — should retrigger.
-   Play note, play second note while first is held — second should sound.
-3. Task 3 (Phase 3): polyphony (8-voice pool via JUCE synthesiser),
-   ADSR envelope per voice, pitch bend, mod wheel, sustain pedal.
+1. Verify in DAW: press 3-4 keys at once — ALL should sound now (was monophonic
+   before the fix).  Also confirm 9+ notes steals the oldest voice.
+2. Commit (suggested message: "Phase 3a: 8-voice polyphony + fix voices
+   overwriting the shared output buffer (scratch+accumulate)").
+3. Task 3b (Phase 3): pitch bend, mod wheel, sustain pedal, selectable voice
+   count.
 
 ## Plaits API notes (Task 2a, read-only investigation)
 

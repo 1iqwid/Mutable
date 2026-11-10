@@ -170,7 +170,9 @@ target_sources(Mutable
         Source/PluginEditor.h
         Source/PluginEditor.cpp
         Source/PlaitsVoice.h
-        Source/PlaitsVoice.cpp)
+        Source/PlaitsVoice.cpp
+        Source/PlaitsSynthVoice.h
+        Source/PlaitsSynthVoice.cpp)
 
 # Not using web views or curl yet (matches the JUCE CMake example defaults).
 target_compile_definitions(Mutable

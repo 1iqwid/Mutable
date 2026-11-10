@@ -37,6 +37,25 @@ MutableAudioProcessor::MutableAudioProcessor()
         std::make_unique<juce::AudioParameterFloat>(
             paramOutGain, "Out Gain",
             juce::NormalisableRange<float>(0.0f, 1.0f), 0.7f));
+
+    // --- Create the 8-voice pool (message thread) ----------------------------
+    //
+    // A minimal SynthesiserSound that applies to all notes and channels.
+    // The sound is reference-counted (ReferenceCountedObject); the synthesiser
+    // keeps its own reference.
+    class AnySound : public juce::SynthesiserSound
+    {
+    public:
+        bool appliesToNote (int) override    { return true; }
+        bool appliesToChannel (int) override { return true; }
+    };
+
+    // SynthesiserSound is a ReferenceCountedObject — use Ptr, not shared_ptr.
+    juce::SynthesiserSound::Ptr sound = new AnySound();
+    synth_.addSound (sound);
+
+    for (int i = 0; i < kNumVoices; ++i)
+        synth_.addVoice (new PlaitsSynthVoice());
 }
 
 MutableAudioProcessor::~MutableAudioProcessor()
@@ -46,12 +65,28 @@ MutableAudioProcessor::~MutableAudioProcessor()
 //==============================================================================
 void MutableAudioProcessor::prepareToPlay (double sampleRate, int)
 {
-    voice_.prepare (sampleRate);
+    // Set the synthesiser's playback sample rate.  This calls
+    // SynthesiserVoice::setCurrentPlaybackSampleRate() on every voice.
+    // Must be called before the first renderNextBlock.
+    synth_.setCurrentPlaybackSampleRate (sampleRate);
+
+    // Prepare each voice's internal PlaitsVoice (creates/initialises the
+    // plaits::Voice, BufferAllocator, and resamplers).  This is the
+    // only place where heap allocation happens — prepareToPlay runs on
+    // the message thread, never on the audio thread.
+    for (int i = 0; i < synth_.getNumVoices(); ++i)
+    {
+        auto* voice = dynamic_cast<PlaitsSynthVoice*>(synth_.getVoice (i));
+        if (voice != nullptr)
+            voice->prepare (sampleRate);
+    }
 }
 
 void MutableAudioProcessor::releaseResources()
 {
-    // voice_ is a member; its destructor deletes the plaits::Voice.
+    // Voices are owned by the synthesiser; their destructors (called when
+    // the processor is destroyed) delete the plaits::Voice objects.
+    // No additional cleanup needed here.
 }
 
 bool MutableAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -91,73 +126,68 @@ void MutableAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const float outGain   = (pOutGain   != nullptr)
                             ? static_cast<juce::AudioParameterFloat*>(pOutGain)->get()   : 0.7f;
 
-    // Push parameters into the voice (message-thread-safe setters).
-    if (engine != lastEngineSent_)
+    // ---- Take a snapshot and give it to every voice -------------------------
+    //
+    // The snapshot is a plain struct written on the audio thread immediately
+    // before renderNextBlock, so no locking is needed.  Each voice stores
+    // the snapshot and applies it in its own renderNextBlock.
+    PlaitsSynthVoice::Parameters voiceParams;
+    voiceParams.engine    = engine;
+    voiceParams.harmonics = harmonics;
+    voiceParams.timbre    = timbre;
+    voiceParams.morph     = morph;
+
+    for (int i = 0; i < synth_.getNumVoices(); ++i)
     {
-        voice_.setEngine (engine);
-        lastEngineSent_ = engine;
+        auto* voice = dynamic_cast<PlaitsSynthVoice*>(synth_.getVoice (i));
+        if (voice != nullptr)
+            voice->setParameters (voiceParams);
     }
-    voice_.setParams (harmonics, timbre, morph);
 
-    // ---- Render in segments split at each MIDI event's sample position ----
+    // ---- Render via the synthesiser ----------------------------------------
     //
-    // PlaitsVoice::render() writes into a float buffer.  We render directly
-    // into channel 0 of the output buffer at the appropriate offset, then
-    // scale by outGain and copy to the remaining channels.
+    // synth_.renderNextBlock() handles:
+    //   1. Splitting the block at each MIDI event's sample position.
+    //   2. Calling voice->renderNextBlock() for each sub-segment.
+    //   3. Dispatching noteOn / noteOff / pitchWheel / aftertouch etc.
     //
-    // render() handles the null-voice case (outputs silence) internally.
+    // The buffer is already cleared; renderVoices() adds to it (does not
+    // overwrite), so multiple voices sum into the same buffer.
+    //
+    // No allocation happens here: each voice's renderNextBlock writes into
+    // the output buffer's existing memory (PlaitsVoice::render uses its own
+    // pre-allocated scratch buffers, and the resamplers are stateful).
+    synth_.renderNextBlock (buffer, midiMessages, 0, numSamples);
 
-    auto renderSegment = [&](int start, int end)
+    // ---- Scale by outGain ---------------------------------------------------
+    //
+    // The synthesiser renders at full voice level; we apply the output gain
+    // here so all voices are scaled uniformly.
+    for (int ch = 0; ch < numChannels; ++ch)
+        juce::FloatVectorOperations::multiply (buffer.getWritePointer (ch),
+                                               outGain, numSamples);
+
+    // ---- NaN / infinity guard -----------------------------------------------
+    //
+    // A NaN or infinity in the output buffer would cause the DAW's metering
+    // to clip permanently and may crash the audio engine.  Scan channel 0
+    // (the other channels are copies of it, or at worst have the same issue);
+    // if any value is not finite, clear the entire buffer for this block.
+    if (numChannels > 0)
     {
-        const int len = end - start;
-        if (len <= 0)
-            return;
-
         float* ch0 = buffer.getWritePointer (0);
-        voice_.render (ch0 + start, nullptr, len);
-
-        // Scale by outGain in place.
-        juce::FloatVectorOperations::multiply (ch0 + start, outGain, len);
-
-        // Copy to remaining channels.
-        for (int ch = 1; ch < numChannels; ++ch)
+        bool bad = false;
+        for (int i = 0; i < numSamples; ++i)
         {
-            juce::FloatVectorOperations::copy (buffer.getWritePointer (ch) + start,
-                                               ch0 + start, len);
+            if (! juce_isfinite (ch0[i]))
+            {
+                bad = true;
+                break;
+            }
         }
-    };
-
-    // Walk events in sample order.
-    // MidiBufferIterator dereferences to MidiMessageMetadata.
-    int writePos = 0;
-    for (auto it = midiMessages.begin(); it != midiMessages.end(); ++it)
-    {
-        const auto& meta = *it;
-        const int eventPos = meta.samplePosition;  // 0-based sample index
-
-        // Render everything up to (but not including) this event.
-        if (eventPos > writePos)
-            renderSegment (writePos, eventPos);
-        writePos = eventPos;
-
-        // Apply the MIDI event.
-        // JUCE 8: MidiMessageMetadata::getMessage() takes no args.
-        const juce::MidiMessage msg = meta.getMessage();
-        if (msg.isNoteOnOrOff())
-        {
-            const int   note = msg.getNoteNumber();
-            const float vel  = msg.getFloatVelocity();  // 0..1
-
-            if (vel > 0.0f)
-                voice_.noteOn (note, vel);
-            else
-                voice_.noteOff();  // velocity 0 counts as noteOff
-        }
+        if (bad)
+            buffer.clear();
     }
-
-    // Render the tail after the last event.
-    if (writePos < numSamples)
-        renderSegment (writePos, numSamples);
 }
 
 //==============================================================================

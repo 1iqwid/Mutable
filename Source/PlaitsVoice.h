@@ -116,6 +116,13 @@ private:
     int   midiNote_ = 60;
     float velocity_ = 1.0f;
 
+    // Tracks the trigger value actually sent to Plaits on the last render()
+    // call (true = trigger was held high, false = low / unpatched).
+    // Used by noteOn() to decide whether a retrigger flush is needed even
+    // when noteOn_ is false (voice-stealing case: noteOff → noteOn with no
+    // render between them).
+    bool  lastTriggerHigh_ = false;
+
     // Retrigger: set when noteOn() is called while already triggered.
     // render() uses this to flush the trigger delay line (5 samples at
     // trigger=0) before re-asserting trigger=1, so Plaits sees a clean
