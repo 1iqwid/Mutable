@@ -116,6 +116,12 @@ private:
     int   midiNote_ = 60;
     float velocity_ = 1.0f;
 
+    // Retrigger: set when noteOn() is called while already triggered.
+    // render() uses this to flush the trigger delay line (5 samples at
+    // trigger=0) before re-asserting trigger=1, so Plaits sees a clean
+    // false→true edge and issues TRIGGER_RISING_EDGE.
+    bool  retrigger_ = false;
+
     // External level control (Phase 2b follow-up).
     bool  useExternalLevel_ = false;
     float level_            = 0.8f;   // default accent when useExternalLevel_ is true

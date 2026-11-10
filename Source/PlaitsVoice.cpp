@@ -64,7 +64,18 @@ void PlaitsVoice::noteOn (int midiNote, float velocity)
 {
     midiNote_ = midiNote;
     velocity_ = velocity < 0.0f ? 0.0f : (velocity > 1.0f ? 1.0f : velocity);
-    noteOn_   = true;
+
+    if (noteOn_)
+    {
+        // Already triggered — Plaits' internal trigger_state_ is latched high.
+        // Set the retrigger flag so render() flushes the delay line before
+        // re-asserting the trigger, creating a clean false→true edge.
+        retrigger_ = true;
+    }
+    else
+    {
+        noteOn_ = true;
+    }
 }
 
 void PlaitsVoice::noteOff ()
@@ -146,6 +157,40 @@ void PlaitsVoice::render (float* out, float* aux, int numSamples)
     }
 
     const float int16Scale = 1.0f / 32768.0f;
+
+    // ---- Retrigger handling -----------------------------------------------
+    //
+    // If retrigger_ is set (noteOn while already triggered), Plaits' internal
+    // trigger_state_ is latched high.  We must flush the 5-slot trigger delay
+    // line by writing trigger=0.0f for 5 consecutive samples, which causes
+    // the edge detector to see trigger_value < 0.1f and clear trigger_state_.
+    // Then the normal generation loop continues with trigger=1.0f, producing
+    // a clean false→true rising edge → TRIGGER_RISING_EDGE.
+    //
+    // 5 samples is enough because the delay line is 8 slots (kMaxTriggerDelay)
+    // but the read offset is 5 (kTriggerDelay), so 5 writes of 0.0f guarantee
+    // that the slot being read is 0.0f.
+    if (retrigger_)
+    {
+        retrigger_ = false;
+        noteOn_ = true;  // ensure noteOn_ is true for the rest of this call
+
+        plaits::Modulations modOff = mod;
+        modOff.trigger = 0.0f;
+
+        for (int s = 0; s < 5; ++s)
+        {
+            const int spaceLeft = static_cast<int> (kScratchSize) - totalIn;
+            if (spaceLeft <= 0)
+                break;
+
+            plaits::Voice::Frame frames[1];
+            voice_->Render (patch, modOff, frames, 1);
+            scratchOut_[totalIn] = static_cast<float> (frames[0].out) * int16Scale;
+            scratchAux_[totalIn] = static_cast<float> (frames[0].aux) * int16Scale;
+            totalIn++;
+        }
+    }
 
     while (static_cast<double> (totalIn) < neededIn)
     {

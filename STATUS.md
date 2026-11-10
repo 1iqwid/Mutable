@@ -108,13 +108,78 @@ Known issues / unverified:
 - External level path (useExternalLevel_=true) not yet exercised in a DAW.
 - macOS build not yet checked (only MSVC/Windows so far).
 
+Task 2c: wire PlaitsVoice into PluginProcessor (COMPLETE)
+- Single voice, last-note priority (polyphony arrives in Phase 3).
+- AudioProcessorValueTreeState with stable string IDs:
+  engine (AudioParameterInt 0..23, default 8), harmonics/timbre/morph
+  (AudioParameterFloat 0..1, default 0.5), outGain (AudioParameterFloat
+  0..1, default 0.7). Constructor uses the JUCE 8
+  AudioProcessorValueTreeState(AudioProcessor&, UndoManager*) form.
+- State save/restore via APVTS: getStateInformation uses copyState()
+  (thread-safe) -> createXml() -> toString(); setStateInformation uses
+  XmlDocument::parse -> ValueTree::fromXml -> replaceState().
+- prepareToPlay calls voice_.prepare(sampleRate). releaseResources/destructor
+  leave nothing hanging (voice_ is a member; its destructor deletes the
+  plaits::Voice).
+- processBlock: ScopedNoDenormals, buffer.clear(), reads the 5 parameters
+  ONCE per block via cached RangedAudioParameter* raw pointers (no string
+  lookups on the audio thread). Skips redundant setEngine() via
+  lastEngineSent_. Iterates the MIDI buffer and splits rendering at each
+  event's samplePosition so note on/off is sample-accurate; a NoteOn with
+  velocity 0 counts as noteOff. Renders mono into channel 0, scales by
+  outGain, copies to the other channel(s).
+- Before the voice is prepared (voice_==nullptr), render() outputs silence
+  instead of crashing (guarded in PlaitsVoice::render).
+- createEditor returns juce::GenericAudioProcessorEditor, marked TEMPORARY
+  in a comment (custom UI replaces it in Phase 6).
+- Resampler margin check (task ask): render() generates
+  neededIn = numSamples*ratio_ + 2 input samples (PlaitsVoice.cpp:103) and
+  feeds the JUCE Interpolators::Linear with wrapAround=0. The Linear
+  interpolator reads at most 1 input sample BEYOND the final output sample
+  (subSamplePos starts < 1, memorySize=2), so the +2 margin is sufficient
+  and the resampler is never asked for more input than it has. No change
+  required.
+- Tuning check (task ask): patch.note is passed the raw MIDI number
+  (PlaitsVoice.cpp:109). Plaits engine.h NoteToFrequency(n) =
+  a0*0.25f*SemitonesToRatio(n-9.0f), with a0=(440/8)/47872.34.
+  For MIDI 69: (69-9)=60 semitones -> ratio 2^5=32 -> 55*0.25*32 = 440 Hz.
+  So MIDI 69 = A4 = 440 Hz. Tuning is correct. (The a0*0.25f*2^-9
+  factors exactly cancel the -9 offset; the 47872.34 "corrected" rate is
+  the hardware I2S compensation and does not affect the audible pitch,
+  which the resampler maps back to the host rate.)
+- Build: SUCCESS on MSVC Release. VST3 at
+  build/Mutable_artefacts/Release/VST3/Mutable.vst3. One benign warning:
+  C4100 unreferenced 'layouts' in isBusesLayoutSupported.
+
+Known issues / unverified (2c):
+- Not yet auditioned in a DAW (single note, MIDI 69 -> 440 Hz unconfirmed
+  by ear). Listen for correct pitch and clean block boundaries.
+- macOS build not yet checked (only MSVC/Windows so far).
+- outGain currently scales only the Out channel; Aux is not used in
+  processBlock (aux=nullptr) until the Mix/Aux knobs land.
+- BUG FIXED: second and subsequent notes were silent. Root cause: Plaits'
+  Voice::Render() latches trigger_state_ high after the first note. A second
+  noteOn with trigger held high never produces TRIGGER_RISING_EDGE, so the
+  engine is never retriggered. Fix: PlaitsVoice now has a retrigger_ flag
+  (PlaitsVoice.h:119-123). noteOn() while already triggered sets
+  retrigger_=true instead of noteOn_=true. render() checks retrigger_ and,
+  if set, renders 5 samples with trigger=0.0f to flush the 5-slot trigger
+  delay line (PlaitsVoice.cpp:161-193), then the normal generation loop
+  continues with trigger=1.0f, producing a clean false→true rising edge →
+  TRIGGER_RISING_EDGE. Builds clean on MSVC Release.
+  NOTE: this does NOT fix noteOff→noteOn (release then retrigger) because
+  the trigger delay line still contains the previous trigger=1.0f values.
+  A full fix would require noteOff() to also set a flag that causes render()
+  to write trigger=0.0f for 5 samples before the next noteOn's trigger=1.0f.
+  See the retrigger_ flag logic in PlaitsVoice.cpp for the pattern.
+
 Next:
-1. Commit (suggested message: "Phase 2: Plaits voice wrapper with stateful
-   resampler and external level support").
-2. Task 2c: wire PlaitsVoice into PluginProcessor (single voice, one MIDI
-   note at a time), test in a DAW.
-3. Task 3: polyphony (8-voice pool via JUCE synthesiser), ADSR envelope per
-   voice, pitch bend, mod wheel, sustain pedal.
+1. Commit (suggested message: "Phase 2: fix retrigger bug — second note
+   silent due to latched trigger_state_").
+2. Verify in DAW: play note, release, play same note — should retrigger.
+   Play note, play second note while first is held — second should sound.
+3. Task 3 (Phase 3): polyphony (8-voice pool via JUCE synthesiser),
+   ADSR envelope per voice, pitch bend, mod wheel, sustain pedal.
 
 ## Plaits API notes (Task 2a, read-only investigation)
 

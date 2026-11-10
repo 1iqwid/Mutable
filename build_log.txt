@@ -1,0 +1,23 @@
+MSBuild version 18.11.1-1.26513.3+940033be3 for .NET Framework
+
+  Checking File Globs
+  Mutable_rc_lib.vcxproj -> C:\Users\liqwi\OneDrive\Documents\My_Code\Mutable\build\Mutable_rc_lib.dir\Release\Mutable_rc_lib.lib
+  Building VST3 manifest helper for Mutable
+  -- Selecting Windows SDK version 10.0.26100.0 to target Windows 10.0.26300.
+  -- Configuring done (0.0s)
+  -- Generating done (0.1s)
+  -- Build files have been written to: C:/Users/liqwi/OneDrive/Documents/My_Code/Mutable/build/vst3_helpers/Mutable
+  MSBuild version 18.11.1-1.26513.3+940033be3 for .NET Framework
+  
+    vst3_helper.vcxproj -> C:\Users\liqwi\OneDrive\Documents\My_Code\Mutable\build\vst3_helpers\Mutable\vst3_helper.exe
+  stmlib.vcxproj -> C:\Users\liqwi\OneDrive\Documents\My_Code\Mutable\build\Release\stmlib.lib
+  plaits_dsp.vcxproj -> C:\Users\liqwi\OneDrive\Documents\My_Code\Mutable\build\Release\plaits_dsp.lib
+  PluginProcessor.cpp
+C:\Users\liqwi\OneDrive\Documents\My_Code\Mutable\Source\PluginProcessor.cpp(57,72): warning C4100: 'layouts': unreferenced parameter [C:\Users\liqwi\OneDrive\Documents\My_Code\Mutable\build\Mutable.vcxproj]
+  Mutable.vcxproj -> C:\Users\liqwi\OneDrive\Documents\My_Code\Mutable\build\Mutable_artefacts\Release\Mutable_SharedCode.lib
+     Creating library C:/Users/liqwi/OneDrive/Documents/My_Code/Mutable/build/Mutable_artefacts/Release/VST3/Mutable.lib and object C:/Users/liqwi/OneDrive/Documents/My_Code/Mutable/build/Mutable_artefacts/Release/VST3/Mutable.exp
+  Generating code
+  Finished generating code
+  Mutable_VST3.vcxproj -> C:\Users\liqwi\OneDrive\Documents\My_Code\Mutable\build\Mutable_artefacts\Release\VST3\Mutable.vst3\Contents\x86_64-win\Mutable.vst3
+  removing moduleinfo.json
+  creating C:/Users/liqwi/OneDrive/Documents/My_Code/Mutable/build/Mutable_artefacts/Release/VST3/Mutable.vst3/Contents/Resources/moduleinfo.json
