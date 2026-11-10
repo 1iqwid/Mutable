@@ -54,11 +54,45 @@ public:
         float harmonics = 0.5f; // 0..1
         float timbre    = 0.5f; // 0..1
         float morph     = 0.5f; // 0..1
+        float attack    = 0.005f; // seconds (0.001–5)
+        float decay     = 0.2f;   // seconds (0.001–5)
+        float sustain   = 0.7f;   // 0..1
+        float release   = 0.3f;   // seconds (0.001–10)
     };
 
+    /// Called from the processor's processBlock (AUDIO THREAD) immediately
+    /// before each renderNextBlock, with the latest parameter snapshot.
+    ///
+    /// Stores the snapshot, and — only if a value actually changed — pushes
+    /// the ADSR times/level into adsr_ via setParameters().  Calling
+    /// setParameters() recalculates the envelope rates without resetting the
+    /// envelope state, so in-progress attack/decay/sustain/release continue
+    /// with the new values and there are no clicks.  No allocation, locks, or
+    /// string lookups occur here.
     void setParameters (const Parameters& p) noexcept
     {
+        const bool adsrChanged =
+            p.attack    != params_.attack ||
+            p.decay     != params_.decay ||
+            p.sustain   != params_.sustain ||
+            p.release   != params_.release;
+
         params_ = p;
+
+        if (adsrChanged)
+        {
+            // Guard against zero / negative times: JUCE's ADSR treats a time
+            // of <= 0 as "skip that stage instantly" (rate == -1), which we
+            // don't want.  The parameter ranges already exclude 0, so this
+            // only protects against unexpected values.
+            const float minTime = 0.001f;
+            juce::ADSR::Parameters a;
+            a.attack  = (p.attack  > minTime) ? p.attack  : minTime;
+            a.decay   = (p.decay   > minTime) ? p.decay   : minTime;
+            a.release = (p.release > minTime) ? p.release : minTime;
+            a.sustain = p.sustain < 0.0f ? 0.0f : (p.sustain > 1.0f ? 1.0f : p.sustain);
+            adsr_.setParameters (a);
+        }
     }
 
     //==========================================================================

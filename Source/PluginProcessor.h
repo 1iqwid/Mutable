@@ -61,6 +61,10 @@ private:
     static const juce::String paramTimbre;
     static const juce::String paramMorph;
     static const juce::String paramOutGain;
+    static const juce::String paramAttack;
+    static const juce::String paramDecay;
+    static const juce::String paramSustain;
+    static const juce::String paramRelease;
 
     //==========================================================================
     // Number of voices — fixed constant for now (Phase 3a).
@@ -82,6 +86,21 @@ private:
     juce::RangedAudioParameter* pTimbre    = nullptr;
     juce::RangedAudioParameter* pMorph     = nullptr;
     juce::RangedAudioParameter* pOutGain   = nullptr;
+    juce::RangedAudioParameter* pAttack    = nullptr;
+    juce::RangedAudioParameter* pDecay     = nullptr;
+    juce::RangedAudioParameter* pSustain   = nullptr;
+    juce::RangedAudioParameter* pRelease   = nullptr;
+
+    //==========================================================================
+    // Build a skewed NormalisableRange for a time parameter so the short end
+    // has fine control.  skew ≈ 0.3 (lower = more skew toward the short end).
+    static juce::NormalisableRange<float>
+        makeSkewedRange (float minVal, float maxVal, float defaultVal,
+                         float skew = 0.3f)
+    {
+        return juce::NormalisableRange<float> (minVal, maxVal,
+                                               defaultVal, skew);
+    }
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MutableAudioProcessor)
 };

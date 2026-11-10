@@ -9,6 +9,10 @@ const juce::String MutableAudioProcessor::paramHarmonics ("harmonics");
 const juce::String MutableAudioProcessor::paramTimbre    ("timbre");
 const juce::String MutableAudioProcessor::paramMorph     ("morph");
 const juce::String MutableAudioProcessor::paramOutGain   ("outGain");
+const juce::String MutableAudioProcessor::paramAttack    ("attack");
+const juce::String MutableAudioProcessor::paramDecay     ("decay");
+const juce::String MutableAudioProcessor::paramSustain   ("sustain");
+const juce::String MutableAudioProcessor::paramRelease   ("release");
 
 //==============================================================================
 MutableAudioProcessor::MutableAudioProcessor()
@@ -37,6 +41,27 @@ MutableAudioProcessor::MutableAudioProcessor()
         std::make_unique<juce::AudioParameterFloat>(
             paramOutGain, "Out Gain",
             juce::NormalisableRange<float>(0.0f, 1.0f), 0.7f));
+
+    // --- Envelope (ADSR) parameters -------------------------------------------
+    //
+    // The three time parameters use a skewed range (skew ≈ 0.3) so the short
+    // end has fine control.  Sustain is a plain 0..1 range.
+    pAttack    = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramAttack, "Attack",
+            makeSkewedRange (0.001f, 5.0f, 0.005f), 0.3f));
+    pDecay     = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramDecay, "Decay",
+            makeSkewedRange (0.001f, 5.0f, 0.2f), 0.3f));
+    pSustain   = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramSustain, "Sustain",
+            juce::NormalisableRange<float>(0.0f, 1.0f), 0.7f));
+    pRelease   = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramRelease, "Release",
+            makeSkewedRange (0.001f, 10.0f, 0.3f), 0.3f));
 
     // --- Create the 8-voice pool (message thread) ----------------------------
     //
@@ -125,6 +150,14 @@ void MutableAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                             ? static_cast<juce::AudioParameterFloat*>(pMorph)->get()     : 0.5f;
     const float outGain   = (pOutGain   != nullptr)
                             ? static_cast<juce::AudioParameterFloat*>(pOutGain)->get()   : 0.7f;
+    const float attack    = (pAttack    != nullptr)
+                            ? static_cast<juce::AudioParameterFloat*>(pAttack)->get()    : 0.005f;
+    const float decay     = (pDecay     != nullptr)
+                            ? static_cast<juce::AudioParameterFloat*>(pDecay)->get()     : 0.2f;
+    const float sustain   = (pSustain   != nullptr)
+                            ? static_cast<juce::AudioParameterFloat*>(pSustain)->get()   : 0.7f;
+    const float release   = (pRelease   != nullptr)
+                            ? static_cast<juce::AudioParameterFloat*>(pRelease)->get()   : 0.3f;
 
     // ---- Take a snapshot and give it to every voice -------------------------
     //
@@ -136,6 +169,10 @@ void MutableAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     voiceParams.harmonics = harmonics;
     voiceParams.timbre    = timbre;
     voiceParams.morph     = morph;
+    voiceParams.attack    = attack;
+    voiceParams.decay     = decay;
+    voiceParams.sustain   = sustain;
+    voiceParams.release   = release;
 
     for (int i = 0; i < synth_.getNumVoices(); ++i)
     {

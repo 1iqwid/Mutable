@@ -227,15 +227,44 @@ Unverified (3a):
 - Voice-stealing edge case (noteOff → noteOn with no render between them)
   is handled by PlaitsVoice::lastTriggerHigh_ / retrigger_ but has not been
   exercised in a DAW yet.
-- ADSR values are fixed defaults; they will become APVTS parameters in Phase 4.
+- (ADSR values are now APVTS parameters — see Task 3b below.)
+
+Task 3b: Adjustable envelope (ADSR) (COMPLETE)
+- Four new APVTS parameters (stable string IDs), registered in
+  PluginProcessor.cpp and cached as raw pointers (no string lookups in
+  processBlock), same pattern as the other parameters:
+    attack    0.001–5 s   default 0.005   skew 0.3
+    decay     0.001–5 s   default 0.2     skew 0.3
+    sustain   0–1         default 0.7     (linear)
+    release   0.001–10 s  default 0.3     skew 0.3
+  The three time parameters use a skewed NormalisableRange (skew ≈ 0.3) so
+  the short end has fine control (helper makeSkewedRange() in PluginProcessor.h).
+- The four values were added to PlaitsSynthVoice::Parameters and are snapshotted
+  in processBlock() alongside engine/harmonics/timbre/morph.
+- PlaitsSynthVoice::setParameters() (audio thread, called before each
+  renderNextBlock) now applies the snapshot to adsr_ via
+  juce::ADSR::setParameters(), but ONLY when one of the four values actually
+  changed — so it is not called every block.  A zero/negative time guard
+  clamps to 0.001 s (sustain clamped to 0..1).
+- Signature confirmed in juce_ADSR.h: juce::ADSR::Parameters(attack, decay,
+  sustain, release) and setParameters() only recalculates rates — it does NOT
+  reset the envelope state — so changing values on already-playing voices is
+  click-free (in-progress attack/decay/sustain/release continues with the new
+  values).
+- No third_party/ changes. Temporary GenericAudioProcessorEditor shows the new
+  sliders automatically, so no UI change.
+- Rebuilt Mutable_VST3 (Release) — 0 errors; Mutable.vst3 produced.
+- Unverified: audible envelope changes in a DAW (adjust attack/decay/sustain/
+  release while a note is held, and while releasing).
 
 Next:
-1. Verify in DAW: press 3-4 keys at once — ALL should sound now (was monophonic
-   before the fix).  Also confirm 9+ notes steals the oldest voice.
-2. Commit (suggested message: "Phase 3a: 8-voice polyphony + fix voices
-   overwriting the shared output buffer (scratch+accumulate)").
-3. Task 3b (Phase 3): pitch bend, mod wheel, sustain pedal, selectable voice
-   count.
+1. Verify in DAW: press 3-4 keys at once — ALL should sound (was monophonic
+   before the polyphony fix); confirm 9+ notes steals the oldest voice.
+2. Verify envelope: move Attack/Decay/Sustain/Release sliders — sound should
+   change live on held notes and on release, with no clicks.
+3. Commit (suggested message: "Phase 3b: adjustable ADSR envelope parameters").
+4. Remaining Phase 3 items: pitch bend, mod wheel, sustain pedal, selectable
+   voice count.
 
 ## Plaits API notes (Task 2a, read-only investigation)
 
