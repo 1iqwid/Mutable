@@ -119,7 +119,7 @@ void PlaitsVoice::render (float* out, float* aux, int numSamples)
     // Build the Patch and Modulations once per render() call (they don't
     // change within a block of samples for a single voice).
     plaits::Patch patch;
-    patch.note                      = static_cast<float> (midiNote_);
+    patch.note                      = static_cast<float> (midiNote_) + pitchOffset_;
     patch.harmonics                 = harmonics_;
     patch.timbre                    = timbre_;
     patch.morph                     = morph_;

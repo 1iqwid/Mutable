@@ -1,5 +1,6 @@
 #include "PlaitsSynthVoice.h"
 #include <JuceHeader.h>
+#include <algorithm>   // std::clamp (mod-wheel temporary routing)
 
 //==============================================================================
 PlaitsSynthVoice::PlaitsSynthVoice()
@@ -45,7 +46,21 @@ void PlaitsSynthVoice::startNote (int midiNoteNumber,
                                   int currentPitchWheelPosition)
 {
     (void) sound;
-    (void) currentPitchWheelPosition;
+
+    // Pitch bend: a note that starts while the wheel is already bent must
+    // already be bent.  JUCE passes the CURRENT wheel position in
+    // currentPitchWheelPosition (juce_Synthesiser.cpp: startVoice() passes
+    // lastPitchWheelValues[channel-1], which is initialised to 0x2000 = centred).
+    // wheelValueToSemitones() maps 0x2000 → 0.0; 0x0000 → -bendRange;
+    // 0x3FFF → +bendRange.  At zero bend (wheel centred) this is a no-op and
+    // the note passes through to Plaits unmodified → exact tuning.
+    const float semitones = wheelValueToSemitones (currentPitchWheelPosition,
+                                                   params_.bendRange);
+
+    // Apply the bend immediately so the very first rendered sample is already
+    // at the bent pitch.  At zero bend (wheel centred) this is a no-op and the
+    // note passes through to Plaits unmodified → exact tuning.
+    plaitsVoice_.setPitchOffset (semitones);
 
     // Push per-block parameters into the PlaitsVoice before rendering.
     plaitsVoice_.setEngine (params_.engine);
@@ -84,8 +99,38 @@ void PlaitsSynthVoice::stopNote (float velocity, bool allowTailOff)
 }
 
 //==============================================================================
-void PlaitsSynthVoice::pitchWheelMoved (int) {}
-void PlaitsSynthVoice::controllerMoved (int, int) {}
+void PlaitsSynthVoice::pitchWheelMoved (int newPitchWheelValue)
+{
+    // newPitchWheelValue is the raw MIDI pitch-wheel value (0..0x3FFF, 0x2000
+    // = centred).  wheelValueToSemitones() maps 0x2000 → 0.0; 0x0000 →
+    // -bendRange; 0x3FFF → +bendRange.  This runs on every wheel move, including
+    // moves on sounding voices (JUCE's handlePitchWheel calls pitchWheelMoved on
+    // all active voices), so a held note tracks the wheel live.  A note started
+    // while the wheel is already bent is handled in startNote() via the same
+    // helper, so the two paths can never disagree.
+    plaitsVoice_.setPitchOffset (
+        wheelValueToSemitones (newPitchWheelValue, params_.bendRange));
+}
+
+//==============================================================================
+void PlaitsSynthVoice::controllerMoved (int controllerNumber, int newControllerValue)
+{
+    if (controllerNumber == 1)   // CC1 = mod wheel
+    {
+        // Store the per-voice mod-wheel value as a 0..1 float.  (The voice is
+        // only reached by JUCE when it is playing this note's channel.)
+        modWheel_ = static_cast<float> (newControllerValue) / 127.0f;
+
+        // TEMPORARY routing (Phase 3c): until the real mod section exists in
+        // Phase 4, add modWheel * 0.5 to timbre, clamped to 0..1.  The actual
+        // application happens in renderNextBlock() (single source of truth) so
+        // this site and the per-block path can never disagree.  Remove this
+        // block (and the modWheel_ member) once Phase 4 wires CC1 to the
+        // proper mod-amount parameter.
+        // (No setParams() call here — renderNextBlock() recomputes timbre from
+        //  params_.timbre + modWheel_ * 0.5f every block.)
+    }
+}
 
 //==============================================================================
 void PlaitsSynthVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer,
@@ -107,8 +152,18 @@ void PlaitsSynthVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer,
 
     // Push the current per-block parameters (the processor calls
     // setParameters() before renderNextBlock for each block).
+    //
+    // TEMPORARY routing (Phase 3c): until the real mod section exists in
+    // Phase 4, add modWheel * 0.5 to timbre, clamped to 0..1.  This is the
+    // SINGLE SOURCE OF TRUTH for the CC1→timbre route (controllerMoved() only
+    // stores modWheel_; it no longer calls setParams() itself), so a held note
+    // is not reset to the base timbre every block while the wheel is moving.
+    // Remove this modWheel_ term (and the modWheel_ member) once Phase 4 wires
+    // CC1 to the proper mod-amount parameter.
+    const float timbreWithMod =
+        std::clamp (params_.timbre + modWheel_ * 0.5f, 0.0f, 1.0f);
     plaitsVoice_.setEngine (params_.engine);
-    plaitsVoice_.setParams (params_.harmonics, params_.timbre, params_.morph);
+    plaitsVoice_.setParams (params_.harmonics, timbreWithMod, params_.morph);
 
     // ---- Render into a local mono buffer, apply ADSR sample-by-sample ----
     //
@@ -147,6 +202,11 @@ void PlaitsSynthVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer,
         scratch[i] *= env;
         plaitsVoice_.setLevel (env);
     }
+
+    // Apply the per-voice gain (kVoiceGain) so an 8-note chord has headroom
+    // and does not clip at the default outGain.  A plain multiply on our
+    // private mono scratch — no allocation, locks, or file I/O.
+    juce::FloatVectorOperations::multiply (scratch, kVoiceGain, numSamples);
 
     // Accumulate (ADD) our mono result into EVERY channel of the shared
     // output buffer.  ADD is required: Synthesiser::renderVoices() hands the

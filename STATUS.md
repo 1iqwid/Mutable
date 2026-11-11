@@ -257,14 +257,64 @@ Task 3b: Adjustable envelope (ADSR) (COMPLETE)
 - Unverified: audible envelope changes in a DAW (adjust attack/decay/sustain/
   release while a note is held, and while releasing).
 
+Task 3c: Pitch bend, mod wheel, sustain pedal, headroom (COMPLETE)
+- bendRange APVTS parameter (stable string id "bendRange"), 0-24 semitones,
+  integer steps (AudioParameterInt), default 2. Registered + cached in
+  PluginProcessor like the ADSR params.
+- PlaitsVoice::setPitchOffset(float semitones): stores a per-voice offset added
+  to the note passed to Plaits (note_ + pitchOffset_, clamped 1..127). At zero
+  bend the note is passed unmodified -> exact tuning.
+- wheelValueToSemitones(wheel, bendRange) (static helper in PlaitsSynthVoice.h):
+  maps raw wheel (0..0x3FFF, 0x2000 centred) to a signed semitone offset by
+  centreing first: (wheel - 8192) / 8192 * bendRange. Centred (8192) -> 0.0
+  semitones, so the note passes through to Plaits UNMODIFIED -> exact tuning at
+  zero bend. Full range (0 / 0x3FFF) -> -bendRange / +bendRange. Shared by
+  startNote() and pitchWheelMoved() so the two paths can never disagree.
+- pitchWheelMoved(): uses wheelValueToSemitones() -> setPitchOffset. (Was
+  previously (wheel/8191)*bendRange, which made centred != 0 and broke exact
+  tuning; now fixed.)
+- startNote() reads currentPitchWheelPosition (JUCE passes the CURRENT wheel
+  position to new voices -- verified Synthesiser::startVoice passes
+  lastPitchWheelValues[channel-1], initialised to 0x2000) and applies
+  wheelValueToSemitones() immediately, so a note starting while the wheel is
+  already bent is bent from sample one and still exact at centred.
+- controllerMoved() CC1: stores modWheel_ (0..1) per voice ONLY (no setParams
+  call). TEMPORARY routing (marked // TEMPORARY in both files) is applied in
+  renderNextBlock() as the single source of truth: timbre = clamp(params_.timbre
+  + modWheel_ * 0.5, 0..1), until the Phase 4 mod section exists. (Previously
+  controllerMoved() called setParams() with the mod'd timbre while
+  renderNextBlock() overwrote it with the base timbre every block, so the
+  temporary CC1->timbre route effectively did nothing on held notes; now fixed
+  so the route works and can't fight the per-block path.) Remove the modWheel_
+  term + member in Phase 4.
+- Sustain pedal: JUCE's Synthesiser already handles CC64 (holds stopNote until
+  release; allowTailOff path -> ADSR release; voice stays active until
+  renderNextBlock sees ADSR idle -> clearCurrentNote). Verified in
+  juce_Synthesiser.h/.cpp; NOT reimplemented.
+- Headroom: kVoiceGain = 0.35f (constant in PlaitsSynthVoice) applied before
+  each voice adds into the shared output, so an 8-note chord doesn't clip at
+  the default outGain.
+- All audio-thread-safe: no allocation, locks, or file access on the audio path.
+- Rebuilt Mutable_VST3 (Release) — EXITCODE=0; Mutable.vst3 produced. (First
+  attempt failed only with LNK1104 "cannot open ...Mutable.vst3" — a transient
+  file lock, zero compile errors; a clean rebuild succeeded.)
+- Unverified: pitch bend + CC1 mod-wheel audible in a DAW (code paths verified
+  against JUCE headers/cpp).
+
 Next:
-1. Verify in DAW: press 3-4 keys at once — ALL should sound (was monophonic
-   before the polyphony fix); confirm 9+ notes steals the oldest voice.
-2. Verify envelope: move Attack/Decay/Sustain/Release sliders — sound should
-   change live on held notes and on release, with no clicks.
-3. Commit (suggested message: "Phase 3b: adjustable ADSR envelope parameters").
-4. Remaining Phase 3 items: pitch bend, mod wheel, sustain pedal, selectable
-   voice count.
+1. Verify in DAW: hold a note and sweep the pitch bend — pitch should move up
+   and down by the full bendRange; start a note with the wheel already bent —
+   it should ring at the bent pitch.
+2. Verify mod wheel (temporary): modulate CC1 — timbre should shift (the
+   Phase 4 mod section will replace this routing).
+3. Verify sustain pedal: hold a note, release the key with pedal up — note
+   should release; with pedal held, releasing the key should sustain.
+4. Verify headroom: play an 8-note chord at the default outGain — no clipping.
+5. Commit (suggested message:
+   "Phase 3c: pitch bend, mod wheel (temporary), sustain pedal, headroom").
+6. Remaining Phase 3 items: selectable voice count. Then Phase 4: full
+   parameters, unison/detune, mod section (replace the temporary CC1→timbre
+   routing), plain UI, presets.
 
 ## Plaits API notes (Task 2a, read-only investigation)
 

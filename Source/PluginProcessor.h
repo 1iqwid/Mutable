@@ -65,6 +65,7 @@ private:
     static const juce::String paramDecay;
     static const juce::String paramSustain;
     static const juce::String paramRelease;
+    static const juce::String paramBendRange;
 
     //==========================================================================
     // Number of voices — fixed constant for now (Phase 3a).
@@ -90,6 +91,7 @@ private:
     juce::RangedAudioParameter* pDecay     = nullptr;
     juce::RangedAudioParameter* pSustain   = nullptr;
     juce::RangedAudioParameter* pRelease   = nullptr;
+    juce::RangedAudioParameter* pBendRange = nullptr;
 
     //==========================================================================
     // Build a skewed NormalisableRange for a time parameter so the short end

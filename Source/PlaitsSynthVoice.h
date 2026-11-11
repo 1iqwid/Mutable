@@ -58,6 +58,7 @@ public:
         float decay     = 0.2f;   // seconds (0.001–5)
         float sustain   = 0.7f;   // 0..1
         float release   = 0.3f;   // seconds (0.001–10)
+        float bendRange = 2.0f;   // semitones (0–24), pitch-bend amount
     };
 
     /// Called from the processor's processBlock (AUDIO THREAD) immediately
@@ -100,6 +101,23 @@ public:
 
 private:
     //==========================================================================
+    /// Convert a raw MIDI pitch-wheel value (0..0x3FFF, 0x2000 = centred) to a
+    /// signed semitone offset, using the voice's current bend range.
+    ///
+    /// Shared by startNote() (note started while the wheel is already bent) and
+    /// pitchWheelMoved() (live wheel moves on sounding voices) so the two paths
+    /// can never disagree.  Centred wheel (8192) → 0.0 semitones, which leaves
+    /// the note value unmodified → exact tuning at zero bend.  Full range
+    /// (0 / 0x3FFF) → ∓bendRange.
+    static float wheelValueToSemitones (int wheelValue, float bendRange) noexcept
+    {
+        const float normalised =
+            (static_cast<float> (wheelValue) - 8192.0f) / 8192.0f;  // -1.0 .. +1.0
+        return normalised * bendRange;
+    }
+
+private:
+    //==========================================================================
     // Fixed ADSR defaults (Phase 3a — to be parameterised in Phase 4).
     static juce::ADSR::Parameters makeAdsrParams() noexcept
     {
@@ -129,10 +147,23 @@ private:
     }
 
     //==========================================================================
+    // Per-voice output gain applied before this voice is added into the shared
+    // output buffer.  With 8 voices summing, an 8-note chord at full level would
+    // otherwise clip; 0.35f leaves headroom so the default outGain is safe.
+    // Applied in renderNextBlock() (audio thread) — a plain multiply, no
+    // allocation or locks.
+    static constexpr float kVoiceGain = 0.35f;
+
+    //==========================================================================
     PlaitsVoice         plaitsVoice_;
     juce::ADSR          adsr_;
     Parameters          params_;
     juce::AudioBuffer<float> scratch_;   // mono, voice-private render scratch
+
+    // Per-voice mod wheel (CC1), 0..1.  Set in controllerMoved().
+    // TEMPORARY (Phase 3c): currently routed to timbre; Phase 4 wires it to
+    // the proper mod-amount parameter.
+    float modWheel_ = 0.0f;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PlaitsSynthVoice)
 };

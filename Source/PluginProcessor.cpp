@@ -13,6 +13,7 @@ const juce::String MutableAudioProcessor::paramAttack    ("attack");
 const juce::String MutableAudioProcessor::paramDecay     ("decay");
 const juce::String MutableAudioProcessor::paramSustain   ("sustain");
 const juce::String MutableAudioProcessor::paramRelease   ("release");
+const juce::String MutableAudioProcessor::paramBendRange ("bendRange");
 
 //==============================================================================
 MutableAudioProcessor::MutableAudioProcessor()
@@ -62,6 +63,14 @@ MutableAudioProcessor::MutableAudioProcessor()
         std::make_unique<juce::AudioParameterFloat>(
             paramRelease, "Release",
             makeSkewedRange (0.001f, 10.0f, 0.3f), 0.3f));
+
+    // --- Pitch-bend range (Phase 3c) ----------------------------------------
+    //
+    // 0–24 semitones, integer steps, default 2.  AudioParameterInt's stepSize
+    // is 1.0 by default, which satisfies the "step 1" requirement.
+    pBendRange = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterInt>(
+            paramBendRange, "Bend Range", 0, 24, 2));
 
     // --- Create the 8-voice pool (message thread) ----------------------------
     //
@@ -158,6 +167,9 @@ void MutableAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                             ? static_cast<juce::AudioParameterFloat*>(pSustain)->get()   : 0.7f;
     const float release   = (pRelease   != nullptr)
                             ? static_cast<juce::AudioParameterFloat*>(pRelease)->get()   : 0.3f;
+    const float bendRange = (pBendRange != nullptr)
+                            ? static_cast<float>(static_cast<juce::AudioParameterInt*>(pBendRange)->get())
+                            : 2.0f;
 
     // ---- Take a snapshot and give it to every voice -------------------------
     //
@@ -173,6 +185,7 @@ void MutableAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     voiceParams.decay     = decay;
     voiceParams.sustain   = sustain;
     voiceParams.release   = release;
+    voiceParams.bendRange = bendRange;
 
     for (int i = 0; i < synth_.getNumVoices(); ++i)
     {

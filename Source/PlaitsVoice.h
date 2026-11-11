@@ -85,6 +85,15 @@ public:
     void noteOn  (int midiNote, float velocity);   // velocity 0..1
     void noteOff ();
 
+    /// Pitch offset in semitones, added to the MIDI note value passed to
+    /// Plaits (default 0.0f).  A positive value raises the pitch; at 0.0f
+    /// the note is passed through unmodified, so tuning stays exact.
+    /// Called from the MIDI / message thread (pitch wheel, note-on).
+    void setPitchOffset (float semitones)
+    {
+        pitchOffset_ = semitones;
+    }
+
     /// External level control (0..1).  When useExternalLevel_ is true,
     /// this value is passed as mod.level with level_patched=true,
     /// overriding the velocity-based accent.  Default is false, in which
@@ -115,6 +124,11 @@ private:
     bool  noteOn_   = false;
     int   midiNote_ = 60;
     float velocity_ = 1.0f;
+
+    // Pitch offset in semitones (pitch wheel + coarse tuning).  Added to the
+    // MIDI note value when the Plaits Patch is built in render().  Default
+    // 0.0f => note passed through unmodified => exact tuning at zero bend.
+    float pitchOffset_ = 0.0f;
 
     // Tracks the trigger value actually sent to Plaits on the last render()
     // call (true = trigger was held high, false = low / unpatched).
