@@ -342,6 +342,49 @@ Next:
    parameters, unison/detune, mod section (replace the temporary CC1→timbre
    routing), plain UI, presets.
 
+Task 3e: CPU profiling (DONE, 11 Nov 2026)
+- New benchmark harness: benchmarks/bench_main.cpp (standalone console exe,
+  excluded from default build via -DMUTABLE_BUILD_TESTS=ON).
+- Method: 8 PlaitsVoice instances, sustained notes (MIDI 60-67),
+  setUseExternalLevel(true) + setLevel(1.0f), 10 s rendered in 512-sample
+  blocks at 48 kHz, wall-clock via steady_clock, NaN/inf check per block.
+- CMakeLists.txt: added option(MUTABLE_BUILD_TESTS OFF) and MutableBench
+  target (links plaits_dsp + juce::juce_audio_basics, compiles
+  Source/PlaitsVoice.cpp directly).
+- Results (Release, MSVC 14.51, Windows x64):
+    Engine  ms/s   % of 1 core
+    0       20.6   0.02 %
+    1       23.1   0.02 %
+    2       17.7   0.02 %
+    3       17.8   0.02 %
+    4        7.2   0.01 %
+    5       23.9   0.02 %
+    6       14.4   0.01 %
+    7       34.2   0.03 %
+    8       19.0   0.02 %
+    9       22.6   0.02 %
+    10      27.0   0.03 %
+    11      17.8   0.02 %
+    12      22.3   0.02 %
+    13      22.3   0.02 %
+    14      22.5   0.02 %
+    15      22.2   0.02 %
+    16      21.5   0.02 %
+    17      22.3   0.02 %
+    18      22.2   0.02 %
+    19      22.9   0.02 %
+    20      22.2   0.02 %
+    21      22.6   0.02 %
+    22      23.9   0.02 %
+    23      51.3   0.05 %   <- heaviest (Wave Terrain)
+  - Heaviest engine: 23 (51.3 ms/s = 5.1 % of one core).
+  - Engines above 25 % of one core: none.
+  - All 24 engines produced finite (non-NaN) output.
+- Interpretation: 8 voices of any single engine is well under 25 % of a core.
+  The spread is modest (7x between lightest and heaviest). Multi-core hosts
+  have even more headroom. Phase 3 CPU profiling complete.
+- No third_party/ changes.
+
 ## Plaits API notes (Task 2a, read-only investigation)
 
 Source: `third_party/plaits/dsp/voice.{h,cc}`, `engine/engine.h`,

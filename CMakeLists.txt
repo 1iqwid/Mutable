@@ -133,6 +133,32 @@ if(MSVC)
 endif()
 
 # ------------------------------------------------------------------------------
+# Optional CPU benchmark (Phase 3 task 3e).
+#
+#   cmake -S . -B build -DCMAKE_BUILD_TYPE=Release -DMUTABLE_BUILD_TESTS=ON
+#   cmake --build build --config Release --target MutableBench
+#
+# The benchmark is a standalone console executable that renders 8 voices of
+# each engine for 10 s and reports ms-of-CPU per second of audio.  It is
+# excluded from the default build (MUTABLE_BUILD_TESTS=OFF).
+# ------------------------------------------------------------------------------
+option(MUTABLE_BUILD_TESTS "Build the CPU benchmark executable" OFF)
+
+if(MUTABLE_BUILD_TESTS)
+    add_executable(MutableBench
+        benchmarks/bench_main.cpp
+        Source/PlaitsVoice.h
+        Source/PlaitsVoice.cpp)
+    target_include_directories(MutableBench
+        PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/Source)
+    target_link_libraries(MutableBench
+        PRIVATE
+            plaits_dsp
+            juce::juce_audio_basics)
+endif()
+
+# ------------------------------------------------------------------------------
 # Plugin target
 #
 # VST3 is built everywhere; AU is only enabled on macOS.
