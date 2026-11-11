@@ -34,9 +34,17 @@ void PlaitsSynthVoice::prepare (double hostSampleRate)
 //==============================================================================
 bool PlaitsSynthVoice::canPlaySound (juce::SynthesiserSound* sound)
 {
-    // We only have one sound type; accept anything.
+    // We only have one sound type, but we only play when this voice's index is
+    // below the shared active-voice count (Phase 3d selectable polyphony).
+    //
+    // JUCE calls this from findFreeVoice() and findVoiceToSteal()
+    // (juce_Synthesiser.cpp) — both verified to consult canPlaySound() — so
+    // returning false here simply excludes this voice from allocation and
+    // stealing.  This is a single lock-free atomic read on the audio thread.
     (void) sound;
-    return true;
+    if (activeCount_ == nullptr)
+        return true;   // not wired up (shouldn't happen) — play by default
+    return index_ < activeCount_->load (std::memory_order_relaxed);
 }
 
 //==============================================================================

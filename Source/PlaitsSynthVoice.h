@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+
 #include <juce_audio_basics/juce_audio_basics.h>
 #include "PlaitsVoice.h"
 
@@ -43,6 +45,31 @@ public:
     /// thread).  Prepares the internal PlaitsVoice for the given sample rate.
     /// Must be called before the first renderNextBlock.
     void prepare (double hostSampleRate);
+
+    //==========================================================================
+    // Voice-count gating (Phase 3d).
+    //
+    // All 8 PlaitsSynthVoice instances are allocated once and never added or
+    // removed at runtime (addVoice/removeVoice would allocate).  Instead the
+    // processor owns a single shared std::atomic<int> "active voice count" and
+    // each voice is given its own index.  canPlaySound() returns true only
+    // while index_ is below that count, so JUCE's voice allocator
+    // (findFreeVoice / findVoiceToSteal, both of which check canPlaySound)
+    // naturally limits new notes and steals to the first N voices.
+    //
+    // setIndex() / setActiveVoiceCount() are message-thread only (the processor
+    // calls them in the constructor); they only store a pointer and an int and
+    // take no locks and allocate nothing.
+    //==========================================================================
+    void setIndex (int voiceIndex) noexcept
+    {
+        index_ = voiceIndex;
+    }
+
+    void setActiveVoiceCount (std::atomic<int>* count) noexcept
+    {
+        activeCount_ = count;
+    }
 
     //==========================================================================
     /// Per-block parameter snapshot, written by the processor (audio thread)
@@ -164,6 +191,14 @@ private:
     // TEMPORARY (Phase 3c): currently routed to timbre; Phase 4 wires it to
     // the proper mod-amount parameter.
     float modWheel_ = 0.0f;
+
+    // Voice-count gating (Phase 3d).  index_ is this voice's position in the
+    // pool (0..kMaxVoices-1); activeCount_ points at the processor-owned
+    // shared atomic holding the current user-selected voice count.  Both are
+    // written once on the message thread and read on the audio thread in
+    // canPlaySound() — the atomic load is the only synchronisation needed.
+    int              index_ = 0;
+    std::atomic<int>* activeCount_ = nullptr;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PlaitsSynthVoice)
 };

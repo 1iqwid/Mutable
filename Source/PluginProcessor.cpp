@@ -14,6 +14,7 @@ const juce::String MutableAudioProcessor::paramDecay     ("decay");
 const juce::String MutableAudioProcessor::paramSustain   ("sustain");
 const juce::String MutableAudioProcessor::paramRelease   ("release");
 const juce::String MutableAudioProcessor::paramBendRange ("bendRange");
+const juce::String MutableAudioProcessor::paramVoices    ("voices");
 
 //==============================================================================
 MutableAudioProcessor::MutableAudioProcessor()
@@ -72,6 +73,16 @@ MutableAudioProcessor::MutableAudioProcessor()
         std::make_unique<juce::AudioParameterInt>(
             paramBendRange, "Bend Range", 0, 24, 2));
 
+    // --- Voice count (Phase 3d) ----------------------------------------------
+    //
+    // User-selectable polyphony: 1..kMaxVoices, integer steps, default
+    // kMaxVoices (8).  All kMaxVoices voices are allocated up front and never
+    // removed; this value only controls how many are eligible to play (see
+    // PlaitsSynthVoice::canPlaySound and the processBlock release path).
+    pVoices = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterInt>(
+            paramVoices, "Voices", 1, kMaxVoices, kMaxVoices));
+
     // --- Create the 8-voice pool (message thread) ----------------------------
     //
     // A minimal SynthesiserSound that applies to all notes and channels.
@@ -88,8 +99,17 @@ MutableAudioProcessor::MutableAudioProcessor()
     juce::SynthesiserSound::Ptr sound = new AnySound();
     synth_.addSound (sound);
 
-    for (int i = 0; i < kNumVoices; ++i)
-        synth_.addVoice (new PlaitsSynthVoice());
+    // Allocate the full pool once (message thread — allocation only happens
+    // here, never at runtime).  Every voice gets its index and a pointer to
+    // the shared active-voice count so canPlaySound() can gate allocation.
+    activeVoiceCount_.store (kMaxVoices, std::memory_order_relaxed);
+    for (int i = 0; i < kMaxVoices; ++i)
+    {
+        auto* voice = new PlaitsSynthVoice();
+        voice->setIndex (i);
+        voice->setActiveVoiceCount (&activeVoiceCount_);
+        synth_.addVoice (voice);
+    }
 }
 
 MutableAudioProcessor::~MutableAudioProcessor()
@@ -170,6 +190,9 @@ void MutableAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const float bendRange = (pBendRange != nullptr)
                             ? static_cast<float>(static_cast<juce::AudioParameterInt*>(pBendRange)->get())
                             : 2.0f;
+    const int   numVoices = (pVoices    != nullptr)
+                            ? static_cast<juce::AudioParameterInt*>(pVoices)->get()
+                            : kMaxVoices;
 
     // ---- Take a snapshot and give it to every voice -------------------------
     //
@@ -192,6 +215,30 @@ void MutableAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         auto* voice = dynamic_cast<PlaitsSynthVoice*>(synth_.getVoice (i));
         if (voice != nullptr)
             voice->setParameters (voiceParams);
+    }
+
+    const int prevCount = activeVoiceCount_.load (std::memory_order_relaxed);
+    activeVoiceCount_.store (numVoices, std::memory_order_relaxed);
+
+    // ---- Selectable polyphony (Phase 3d) ------------------------------------
+    //
+    // When the count decreases, any sounding voice whose index is now at or
+    // above the new count is no longer eligible to play.  Release it smoothly
+    // NOW (do not wait for the note to end): stopNote(1.0f, true) sets the key
+    // up and starts the ADSR release phase, so it fades out with no click.
+    //
+    // This runs on the audio thread: it is a fixed loop over the static
+    // kMaxVoices pool, a few atomic loads, and a virtual call per affected
+    // voice.  No allocation, no locks (no note event is being processed), and
+    // no file I/O.  Voices are never added or removed here.
+    for (int i = 0; i < synth_.getNumVoices(); ++i)
+    {
+        auto* voice = dynamic_cast<PlaitsSynthVoice*>(synth_.getVoice (i));
+        if (voice == nullptr)
+            continue;
+
+        if (i >= numVoices && i < prevCount && voice->isVoiceActive())
+            voice->stopNote (1.0f, true);   // allowTailOff → release via ADSR
     }
 
     // ---- Render via the synthesiser ----------------------------------------

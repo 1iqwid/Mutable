@@ -1,5 +1,7 @@
 #pragma once
 
+#include <atomic>
+
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "PlaitsSynthVoice.h"
 
@@ -66,10 +68,14 @@ private:
     static const juce::String paramSustain;
     static const juce::String paramRelease;
     static const juce::String paramBendRange;
+    static const juce::String paramVoices;
 
     //==========================================================================
-    // Number of voices — fixed constant for now (Phase 3a).
-    static constexpr int kNumVoices = 8;
+    // Maximum number of voices — a compile-time constant (Phase 3d).  All
+    // kMaxVoices voices are allocated once and never added/removed at runtime;
+    // the user selects how many of them are active via the "voices" parameter
+    // (1..kMaxVoices, default kMaxVoices).
+    static constexpr int kMaxVoices = 8;
 
     //==========================================================================
     // The synthesiser owns all voices and the sound.  Voices are heap-
@@ -92,6 +98,14 @@ private:
     juce::RangedAudioParameter* pSustain   = nullptr;
     juce::RangedAudioParameter* pRelease   = nullptr;
     juce::RangedAudioParameter* pBendRange = nullptr;
+    juce::RangedAudioParameter* pVoices    = nullptr;
+
+    //==========================================================================
+    // Shared active-voice count (Phase 3d).  Owned by the processor; every
+    // PlaitsSynthVoice holds a pointer to it.  processBlock() writes the
+    // selected voice count into this atomic once per block; each voice reads it
+    // (lock-free) in canPlaySound() to gate allocation/stealing.
+    std::atomic<int> activeVoiceCount_;
 
     //==========================================================================
     // Build a skewed NormalisableRange for a time parameter so the short end

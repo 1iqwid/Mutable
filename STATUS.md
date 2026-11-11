@@ -301,18 +301,44 @@ Task 3c: Pitch bend, mod wheel, sustain pedal, headroom (COMPLETE)
 - Unverified: pitch bend + CC1 mod-wheel audible in a DAW (code paths verified
   against JUCE headers/cpp).
 
+Task 3d: Selectable voice count (COMPLETE)
+- voices APVTS parameter (stable string id "voices"), AudioParameterInt range
+  1..kMaxVoices, default kMaxVoices (8). kMaxVoices is now the named constant
+  (renamed from kNumVoices, value still 8) in PluginProcessor.h.
+- All kMaxVoices PlaitsSynthVoice instances are allocated once in the
+  constructor and NEVER added/removed at runtime (addVoice/removeVoice would
+  allocate). Each voice is given setIndex(i) and a shared std::atomic<int>*
+  via setActiveVoiceCount(&activeVoiceCount_); the processor owns the atomic.
+- canPlaySound() now returns true only while index_ < the shared active count
+  (a single lock-free atomic read on the audio thread).
+- processBlock reads the voices param once, stores it into the atomic once per
+  block, and on a DECREASE calls stopNote(1.0f, true) on any active voice whose
+  index is now >= the new count -> smooth ADSR release, no click, doesn't wait
+  for the note to end. Fixed loop over the static pool: no allocation, locks, or
+  file I/O on the audio thread.
+- JUCE verified (juce_Synthesiser.cpp, 8.0.17): findFreeVoice (line 509) and
+  findVoiceToSteal (line 525) BOTH consult canPlaySound(), so disabling a voice
+  excludes it from allocation AND stealing. Range is 1..8 (never 0) so there is
+  always a valid candidate (findVoiceToSteal jasserts !voices.isEmpty()).
+- Rebuilt Mutable_VST3 (Release) — clean, no errors/warnings; Mutable.vst3
+  produced (10:31 AM).
+- Unverified: selectable voice count audible in a DAW (code paths verified
+  against JUCE headers/cpp).
+
 Next:
-1. Verify in DAW: hold a note and sweep the pitch bend — pitch should move up
-   and down by the full bendRange; start a note with the wheel already bent —
-   it should ring at the bent pitch.
-2. Verify mod wheel (temporary): modulate CC1 — timbre should shift (the
-   Phase 4 mod section will replace this routing).
-3. Verify sustain pedal: hold a note, release the key with pedal up — note
-   should release; with pedal held, releasing the key should sustain.
-4. Verify headroom: play an 8-note chord at the default outGain — no clipping.
+1. Verify in DAW: play more simultaneous notes than "voices" — only that many
+   should sound (extra notes steal the oldest eligible voice, never a voice
+   index >= the count).
+2. Verify the decrease path: hold an 8-note chord, drop "voices" to 3 — the
+   voices with index >= 3 should release smoothly (no click) while notes 0-2
+   keep sounding.
+3. Verify the increase path: hold 3 notes, raise "voices" to 8 — new notes can
+   now take the higher voices.
+4. Verify pitch bend / mod wheel (temporary) / sustain pedal / headroom from 3c
+   still work.
 5. Commit (suggested message:
-   "Phase 3c: pitch bend, mod wheel (temporary), sustain pedal, headroom").
-6. Remaining Phase 3 items: selectable voice count. Then Phase 4: full
+   "Phase 3d: user-selectable voice count (1-8, no runtime add/remove)").
+6. Remaining Phase 3 items: profile CPU on heavy engines. Then Phase 4: full
    parameters, unison/detune, mod section (replace the temporary CC1→timbre
    routing), plain UI, presets.
 
