@@ -247,31 +247,33 @@ void PlaitsVoice::render (float* out, float* aux, int numSamples)
                         ? resamplerAux_.process (scratchAux_, totalIn, aux, numSamples)
                         : 0;
 
-    // Move unconsumed input samples to the front of the scratch buffers
-    // for the next render() call.  The interpolator's internal state
-    // (subSamplePos, lastInputSamples) is already correct; we just need
-    // to keep the raw input aligned so the next call's resampler can
-    // find any samples it still needs.
+#if JUCE_DEBUG
+    // Both resamplers run the same ratio over the same input samples, so the
+    // consumed counts must always be equal.  If this ever fires, the two
+    // channels have drifted and the single scratchCount_ can no longer track
+    // both of them — the invariant this class depends on is broken.
+    jassert (aux == nullptr || auxUsed == outUsed);
+#endif
+
+    // Move unconsumed input samples to the front of the scratch buffers for the
+    // next render() call.  The interpolator's internal state (subSamplePos,
+    // lastInputSamples) is already correct; we just keep the raw input aligned
+    // so the next call's resampler can find the samples it still needs.
     //
-    // In practice, with Linear (memorySize=2) the interpolator only ever
-    // needs at most 1 extra input sample beyond (numSamples * ratio_).
-    // Our +2 margin in neededIn guarantees totalIn is always sufficient,
-    // so outUsed == totalIn in almost all cases.  If not, we shift.
+    // outUsed and auxUsed are always equal (debug assert above), so there is a
+    // single carry-over count that is correct for BOTH channels.  In practice,
+    // with Linear (memorySize=2) the interpolator only ever needs at most 1
+    // extra input sample beyond (numSamples * ratio_); our +2 margin in neededIn
+    // guarantees totalIn is always sufficient, so outUsed == totalIn in almost
+    // all cases.  If not, we shift.
     if (outUsed < totalIn)
     {
         const int remaining = totalIn - outUsed;
-        std::memmove (scratchOut_, scratchOut_ + outUsed,
-                      remaining * sizeof (float));
-    }
-    if (aux != nullptr && auxUsed < totalIn)
-    {
-        const int remaining = totalIn - auxUsed;
-        std::memmove (scratchAux_, scratchAux_ + auxUsed,
-                      remaining * sizeof (float));
+        std::memmove (scratchOut_, scratchOut_ + outUsed, remaining * sizeof (float));
+        if (aux != nullptr)
+            std::memmove (scratchAux_, scratchAux_ + outUsed, remaining * sizeof (float));
     }
 
-    scratchCount_ = (outUsed < totalIn) ? (totalIn - outUsed)
-                   : (aux != nullptr && auxUsed < totalIn) ? (totalIn - auxUsed)
-                   : 0;
+    scratchCount_ = (outUsed < totalIn) ? (totalIn - outUsed) : 0;
 }
 

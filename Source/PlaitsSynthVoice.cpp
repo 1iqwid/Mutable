@@ -173,48 +173,60 @@ void PlaitsSynthVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer,
     plaitsVoice_.setEngine (params_.engine);
     plaitsVoice_.setParams (params_.harmonics, timbreWithMod, params_.morph);
 
-    // ---- Render into a local mono buffer, apply ADSR sample-by-sample ----
+    // ---- Render both outputs, apply ADSR + voice gain, blend Out/Aux -------
     //
-    // We render into a single-channel scratch buffer, multiply each sample
-    // by the corresponding ADSR value, and feed the ADSR value to
-    // PlaitsVoice::setLevel() so the Plaits LPG (external-level mode)
-    // uses the envelope as its accent.
+    // We render the Out and Aux channels into two voice-private mono scratch
+    // buffers (pre-sized in prepare(); no allocation on the audio path).
     //
-    // PlaitsVoice::render() writes into the out buffer; we then scale
-    // each sample by the ADSR.
+    // The ADSR drives the Plaits level via setLevel() each sample (external-
+    // level mode: the LPG uses Process with no built-in decay) AND is
+    // multiplied into both Out and Aux here, so both outputs share the same
+    // envelope.  kVoiceGain is applied to both for 8-voice headroom.
+    //
+    // Mix / auxLevel are ramped linearly across the block from the previous
+    // block's value to the current value (zipper-noise avoidance).  The blend
+    // is per-voice:  blend = out * (1 - mix) + aux * auxLevel * mix, which
+    // reduces to exactly the old (Out-only) signal at the default mix = 0.
 
     const int numChannels = outputBuffer.getNumChannels();
 
-    // Make sure our private scratch buffer is big enough for this block.
+    // Make sure our private scratch buffers are big enough for this block.
     // Pre-sized in prepare(); this is a no-op on the normal path.
     ensureScratch (numSamples);
 
-    // Render the Plaits voice into our PRIVATE mono scratch buffer (NOT the
-    // shared output buffer).  PlaitsVoice::render() overwrites its target,
-    // which is fine here because scratch_ is voice-private.
-    float* scratch = scratch_.getWritePointer (0);
-    plaitsVoice_.render (scratch, nullptr, numSamples);
+    float* outBuf  = scratch_.getWritePointer (0);
+    float* auxBuf  = scratchAux_.getWritePointer (0);
 
-    // Apply the ADSR sample-by-sample and feed each value to setLevel().
-    //
-    // Important: we must call adsr_.getNextSample() in order to advance
-    // the envelope state machine.  We multiply each scratch sample by the
-    // envelope value AND pass it to setLevel() so Plaits' internal
-    // external-level path uses the same value.
-    //
-    // This is done sample-by-sample because the ADSR is a stateful
-    // sample-rate-corrected envelope generator.
+    // Render the Plaits voice into our PRIVATE scratch buffers (NOT the shared
+    // output buffer).  PlaitsVoice::render() overwrites its targets, which is
+    // fine because these are voice-private.
+    plaitsVoice_.render (outBuf, auxBuf, numSamples);
+
+    // Ramp mix / auxLevel linearly across this block (start = previous block's
+    // value, end = current value), apply the ADSR sample-by-sample, apply the
+    // per-voice gain, and blend the two channels.
+    const float invNum  = (numSamples > 0) ? (1.0f / static_cast<float> (numSamples)) : 0.0f;
+    const float mixDelta  = params_.mix      - prevMix;
+    const float auxDelta  = params_.auxLevel - prevAuxLevel;
+
     for (int i = 0; i < numSamples; ++i)
     {
-        const float env = adsr_.getNextSample();
-        scratch[i] *= env;
+        const float env  = adsr_.getNextSample();   // stateful — must run in order
         plaitsVoice_.setLevel (env);
+
+        const float t = static_cast<float> (i) * invNum;   // 0 at the first sample
+        const float mix = prevMix + mixDelta * t;
+        const float auxLvl = prevAuxLevel + auxDelta * t;
+
+        const float blended =
+            outBuf[i] * (1.0f - mix) + auxBuf[i] * auxLvl * mix;
+
+        outBuf[i] = blended * env * kVoiceGain;
     }
 
-    // Apply the per-voice gain (kVoiceGain) so an 8-note chord has headroom
-    // and does not clip at the default outGain.  A plain multiply on our
-    // private mono scratch — no allocation, locks, or file I/O.
-    juce::FloatVectorOperations::multiply (scratch, kVoiceGain, numSamples);
+    // Finish the ramp: the next block starts from this block's end values.
+    prevMix      = params_.mix;
+    prevAuxLevel = params_.auxLevel;
 
     // Accumulate (ADD) our mono result into EVERY channel of the shared
     // output buffer.  ADD is required: Synthesiser::renderVoices() hands the
@@ -225,7 +237,7 @@ void PlaitsSynthVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer,
     {
         juce::FloatVectorOperations::add (
             outputBuffer.getWritePointer (ch) + startSample,
-            scratch,
+            outBuf,
             numSamples);
     }
 

@@ -15,6 +15,8 @@ const juce::String MutableAudioProcessor::paramSustain   ("sustain");
 const juce::String MutableAudioProcessor::paramRelease   ("release");
 const juce::String MutableAudioProcessor::paramBendRange ("bendRange");
 const juce::String MutableAudioProcessor::paramVoices    ("voices");
+const juce::String MutableAudioProcessor::paramMix       ("mix");
+const juce::String MutableAudioProcessor::paramAuxLevel  ("auxLevel");
 
 //==============================================================================
 MutableAudioProcessor::MutableAudioProcessor()
@@ -82,6 +84,23 @@ MutableAudioProcessor::MutableAudioProcessor()
     pVoices = apvts_.createAndAddParameter (
         std::make_unique<juce::AudioParameterInt>(
             paramVoices, "Voices", 1, kMaxVoices, kMaxVoices));
+
+    // --- Aux output (Task 4a) -------------------------------------------------
+    //
+    // Plaits has two outputs: Out and Aux.  "Mix" crossfades between them
+    // (0 = Out only, 1 = Aux only) and "Aux Level" sets the Aux loudness before
+    // the blend.  Per-voice blend (PlaitsSynthVoice::renderNextBlock):
+    //     blend = out * (1 - mix) + aux * auxLevel * mix
+    // Both are linear 0..1.  At the default mix = 0 the output is exactly the
+    // Out signal, so existing presets are unaffected.
+    pMix      = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramMix, "Mix",
+            juce::NormalisableRange<float>(0.0f, 1.0f), 0.0f));
+    pAuxLevel = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramAuxLevel, "Aux Level",
+            juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f));
 
     // --- Create the 8-voice pool (message thread) ----------------------------
     //
@@ -194,6 +213,13 @@ void MutableAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                             ? static_cast<juce::AudioParameterInt*>(pVoices)->get()
                             : kMaxVoices;
 
+    const float mix       = (pMix       != nullptr)
+                             ? static_cast<juce::AudioParameterFloat*>(pMix)->get()
+                             : 0.0f;
+    const float auxLevel  = (pAuxLevel  != nullptr)
+                             ? static_cast<juce::AudioParameterFloat*>(pAuxLevel)->get()
+                             : 1.0f;
+
     // ---- Take a snapshot and give it to every voice -------------------------
     //
     // The snapshot is a plain struct written on the audio thread immediately
@@ -209,6 +235,8 @@ void MutableAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     voiceParams.sustain   = sustain;
     voiceParams.release   = release;
     voiceParams.bendRange = bendRange;
+    voiceParams.mix       = mix;
+    voiceParams.auxLevel  = auxLevel;
 
     for (int i = 0; i < synth_.getNumVoices(); ++i)
     {

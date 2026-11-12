@@ -86,6 +86,8 @@ public:
         float sustain   = 0.7f;   // 0..1
         float release   = 0.3f;   // seconds (0.001–10)
         float bendRange = 2.0f;   // semitones (0–24), pitch-bend amount
+        float mix       = 0.0f;   // 0..1, 0 = Out only, 1 = Aux only
+        float auxLevel  = 1.0f;   // 0..1, Aux loudness before the blend
     };
 
     /// Called from the processor's processBlock (AUDIO THREAD) immediately
@@ -171,6 +173,8 @@ private:
     {
         if (scratch_.getNumSamples() < numSamples)
             scratch_.setSize (1, numSamples);
+        if (scratchAux_.getNumSamples() < numSamples)
+            scratchAux_.setSize (1, numSamples);
     }
 
     //==========================================================================
@@ -185,7 +189,18 @@ private:
     PlaitsVoice         plaitsVoice_;
     juce::ADSR          adsr_;
     Parameters          params_;
-    juce::AudioBuffer<float> scratch_;   // mono, voice-private render scratch
+    juce::AudioBuffer<float> scratch_;     // mono, voice-private render scratch (Out)
+    juce::AudioBuffer<float> scratchAux_;  // mono, voice-private render scratch (Aux)
+
+    // Previous per-block mix / auxLevel, used to ramp linearly across each
+    // block (start = previous value, end = current value) so parameter changes
+    // never cause zipper noise.  prevMix starts at 0, which is exactly the
+    // factory mix default, so the first block renders at the default (Out
+    // only).  prevAuxLevel starts at 0 (ramps to the auxLevel default 1.0 over
+    // the first block) — at the default mix = 0 the aux path contributes
+    // nothing, so this has no audible effect.
+    float prevMix      = 0.0f;
+    float prevAuxLevel = 0.0f;
 
     // Per-voice mod wheel (CC1), 0..1.  Set in controllerMoved().
     // TEMPORARY (Phase 3c): currently routed to timbre; Phase 4 wires it to

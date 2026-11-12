@@ -164,7 +164,12 @@ private:
     static constexpr size_t kScratchSize = 8192;
     float scratchOut_[kScratchSize];
     float scratchAux_[kScratchSize];
-    int   scratchCount_ = 0;   // samples currently in scratch buffers
+
+    // Single carry-over count for BOTH channels.  Both resamplers consume the
+    // same ratio over the same input samples, so the consumed counts are always
+    // equal and one remaining-count is correct for both (see the debug assert
+    // in PlaitsVoice::render).
+    int scratchCount_ = 0;   // samples currently in scratch buffers (both channels)
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (PlaitsVoice)
 };

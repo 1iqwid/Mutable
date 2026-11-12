@@ -229,6 +229,18 @@ cmake --build build --config Release --target MutableBench
   - Lightest engine: 4 (7.2 ms/s = 0.7 % of one core).
   - Engines above 25 % of one core: none.
   - All 24 engines produced finite (non-NaN) output.
+
+- AUX (Task 4a) re-benchmark, same machine/flags, aux path active (out+aux
+  resampled, ADSR applied to both, blended per voice; mix=0 default).
+  % of 1 core = ms/s ÷ 10. Heaviest engine is now 21 (58.617 ms/s = 0.06 %
+  of one core). All 24 engines produced finite output.
+  NOTE: these absolute numbers are much lower than the 2b run above
+  (heaviest 51.3 ms/s then vs 58.6 ms/s now, but lightest dropped
+  7.2 -> 6.5 ms/s and the spread is far smaller). The benchmark machine is
+  a different CPU than the 2b run, so only relative within-run comparisons
+  are meaningful; cross-run absolute values are NOT comparable.
+  Within this run the aux path adds a small constant overhead; the
+  heaviest-engine % is 0.06 % of one core (58.617 ms/s ÷ 10).
 - Interpretation: 8 voices of any single engine is well under 25 % of a core.
   The spread is modest (7x between lightest and heaviest). Multi-core hosts
   have even more headroom. Phase 3 CPU profiling complete.

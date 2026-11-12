@@ -69,6 +69,8 @@ private:
     static const juce::String paramRelease;
     static const juce::String paramBendRange;
     static const juce::String paramVoices;
+    static const juce::String paramMix;
+    static const juce::String paramAuxLevel;
 
     //==========================================================================
     // Maximum number of voices — a compile-time constant (Phase 3d).  All
@@ -99,6 +101,8 @@ private:
     juce::RangedAudioParameter* pRelease   = nullptr;
     juce::RangedAudioParameter* pBendRange = nullptr;
     juce::RangedAudioParameter* pVoices    = nullptr;
+    juce::RangedAudioParameter* pMix       = nullptr;
+    juce::RangedAudioParameter* pAuxLevel  = nullptr;
 
     //==========================================================================
     // Shared active-voice count (Phase 3d).  Owned by the processor; every
