@@ -72,3 +72,4 @@ $RECYCLE.BIN/
 *.temp
 .cache/
 *.tmp.*
+build_*.txt

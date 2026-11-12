@@ -143,7 +143,7 @@ void MutableAudioProcessor::releaseResources()
     // No additional cleanup needed here.
 }
 
-bool MutableAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
+bool MutableAudioProcessor::isBusesLayoutSupported (const BusesLayout&) const
 {
     return true;
 }
