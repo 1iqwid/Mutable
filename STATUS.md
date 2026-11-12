@@ -123,7 +123,10 @@ Live "no valid event input bus" load failure). Passes pluginval at strictness 5.
 - prepareToPlay: synth.setCurrentPlaybackSampleRate + iterates all voices calling prepare().
 - No allocation, locks, or file I/O on the audio path.
 
-## Phase 4 planning (NOT STARTED)
+## Phase 4 (IN PROGRESS)
+
+Task 4a (Aux output, Mix and Aux Level) is done — see "AUX (Task 4a) re-benchmark"
+below. Remaining Phase 4 items:
 
 **Phase 4 — Full parameters and placeholder UI.**
 - All 24 engines exposed (currently only 8 default).
@@ -232,7 +235,7 @@ cmake --build build --config Release --target MutableBench
 
 - AUX (Task 4a) re-benchmark, same machine/flags, aux path active (out+aux
   resampled, ADSR applied to both, blended per voice; mix=0 default).
-  % of 1 core = ms/s ÷ 10. Heaviest engine is now 21 (58.617 ms/s = 0.06 %
+  % of 1 core = ms/s ÷ 10. Heaviest engine is now 21 (58.617 ms/s = 5.9 %
   of one core). All 24 engines produced finite output.
   NOTE: these absolute numbers are much lower than the 2b run above
   (heaviest 51.3 ms/s then vs 58.6 ms/s now, but lightest dropped
@@ -240,7 +243,7 @@ cmake --build build --config Release --target MutableBench
   a different CPU than the 2b run, so only relative within-run comparisons
   are meaningful; cross-run absolute values are NOT comparable.
   Within this run the aux path adds a small constant overhead; the
-  heaviest-engine % is 0.06 % of one core (58.617 ms/s ÷ 10).
+  heaviest-engine % is 5.9 % of one core (58.617 ms/s ÷ 10).
 - Interpretation: 8 voices of any single engine is well under 25 % of a core.
   The spread is modest (7x between lightest and heaviest). Multi-core hosts
   have even more headroom. Phase 3 CPU profiling complete.
