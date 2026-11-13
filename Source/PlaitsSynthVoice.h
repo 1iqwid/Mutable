@@ -88,6 +88,32 @@ public:
         float bendRange = 2.0f;   // semitones (0–24), pitch-bend amount
         float mix       = 0.0f;   // 0..1, 0 = Out only, 1 = Aux only
         float auxLevel  = 1.0f;   // 0..1, Aux loudness before the blend
+        // ---- Task 4b: tuning + LPG colour/decay ---------------------------
+        // Pitch tuning (added on top of the live bend in renderNextBlock):
+        //   total semitones = bendSemis_ + coarse + fine / 100.
+        float coarse = 0.0f;      // semitones, integer -24..+24, default 0
+        float fine   = 0.0f;      // cents, -100..+100, default 0 (== 0.0 semitones)
+        // Plaits low-pass gate (see PlaitsVoice::render):
+        float lpgColour = 0.5f;   // 0..1 HF bleed (patch.lpg_colour)
+        float lpgDecay  = 0.5f;   // 0..1 gate release length (patch.decay)
+        // ---- Task 4c-1: modulation matrix (bipolar -1..+1) ------------------
+        // Three sources (envelope, velocity, mod wheel) x four destinations
+        // (harmonics, timbre, morph, pitch).  All default to 0.0 EXCEPT
+        // modWheelTimbre = 0.5, which preserves the existing CC1->timbre
+        // routing.  Computed once per block in renderNextBlock(); see there
+        // for the exact formulas.
+        float modEnvHarmonics   = 0.0f;
+        float modEnvTimbre      = 0.0f;
+        float modEnvMorph       = 0.0f;
+        float modEnvPitch       = 0.0f;
+        float modVelHarmonics   = 0.0f;
+        float modVelTimbre      = 0.0f;
+        float modVelMorph       = 0.0f;
+        float modVelPitch       = 0.0f;
+        float modWheelHarmonics = 0.0f;
+        float modWheelTimbre    = 0.5f;   // default 0.5 (was the temp CC1->timbre)
+        float modWheelMorph     = 0.0f;
+        float modWheelPitch     = 0.0f;
     };
 
     /// Called from the processor's processBlock (AUDIO THREAD) immediately
@@ -202,10 +228,32 @@ private:
     float prevMix      = 0.0f;
     float prevAuxLevel = 0.0f;
 
-    // Per-voice mod wheel (CC1), 0..1.  Set in controllerMoved().
-    // TEMPORARY (Phase 3c): currently routed to timbre; Phase 4 wires it to
-    // the proper mod-amount parameter.
-    float modWheel_ = 0.0f;
+    // Modulation sources (Task 4c-1), all per-voice:
+    //   envSource_  — the voice's ADSR value 0..1; the LAST value from the
+    //                 previous block (stored as a member, updated at the end
+    //                 of renderNextBlock).  0.0 before the first block.
+    //   velocity_   — the note-on velocity 0..1 (set in startNote()).
+    //   wheel_      — CC1 normalised 0..1 (set in controllerMoved()).
+    // These feed the mod matrix in renderNextBlock (see there).
+    float envSource_ = 0.0f;
+    float velocity_  = 1.0f;
+    float wheel_     = 0.0f;
+
+    // The last ADSR sample value produced in the previous renderNextBlock()
+    // call.  Captured inside the sample loop (line "lastAdsrValue_ = env;")
+    // and written into envSource_ at the end of renderNextBlock so the NEXT
+    // block's mod-matrix computation uses the envelope value that was in
+    // effect at the END of the last render (Task 4c-1 convention).  Plain
+    // member — no allocation, no lock, no file I/O.
+    float lastAdsrValue_ = 0.0f;
+
+    // Pitch bend in SEMITONES — the single source of truth for the live bend.
+    // Written ONLY by pitchWheelMoved() and startNote() (message thread).
+    // renderNextBlock() is the ONLY place that calls plaitsVoice_.setPitchOffset(),
+    // using total = bendSemis_ + params_.coarse + params_.fine / 100.0f.
+    // Centred wheel (bendSemis_ = 0) with coarse = 0, fine = 0 → total = 0 →
+    // the MIDI note is passed to Plaits unmodified → exactly in tune.
+    float bendSemis_ = 0.0f;
 
     // Voice-count gating (Phase 3d).  index_ is this voice's position in the
     // pool (0..kMaxVoices-1); activeCount_ points at the processor-owned

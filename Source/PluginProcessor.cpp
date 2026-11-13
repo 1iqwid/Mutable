@@ -17,6 +17,22 @@ const juce::String MutableAudioProcessor::paramBendRange ("bendRange");
 const juce::String MutableAudioProcessor::paramVoices    ("voices");
 const juce::String MutableAudioProcessor::paramMix       ("mix");
 const juce::String MutableAudioProcessor::paramAuxLevel  ("auxLevel");
+const juce::String MutableAudioProcessor::paramCoarse    ("coarse");
+const juce::String MutableAudioProcessor::paramFine      ("fine");
+const juce::String MutableAudioProcessor::paramLpgColour ("lpgColour");
+const juce::String MutableAudioProcessor::paramLpgDecay  ("lpgDecay");
+const juce::String MutableAudioProcessor::paramModEnvHarmonics   ("modEnvHarmonics");
+const juce::String MutableAudioProcessor::paramModEnvTimbre      ("modEnvTimbre");
+const juce::String MutableAudioProcessor::paramModEnvMorph       ("modEnvMorph");
+const juce::String MutableAudioProcessor::paramModEnvPitch       ("modEnvPitch");
+const juce::String MutableAudioProcessor::paramModVelHarmonics   ("modVelHarmonics");
+const juce::String MutableAudioProcessor::paramModVelTimbre      ("modVelTimbre");
+const juce::String MutableAudioProcessor::paramModVelMorph       ("modVelMorph");
+const juce::String MutableAudioProcessor::paramModVelPitch       ("modVelPitch");
+const juce::String MutableAudioProcessor::paramModWheelHarmonics ("modWheelHarmonics");
+const juce::String MutableAudioProcessor::paramModWheelTimbre    ("modWheelTimbre");
+const juce::String MutableAudioProcessor::paramModWheelMorph     ("modWheelMorph");
+const juce::String MutableAudioProcessor::paramModWheelPitch     ("modWheelPitch");
 
 //==============================================================================
 MutableAudioProcessor::MutableAudioProcessor()
@@ -101,6 +117,86 @@ MutableAudioProcessor::MutableAudioProcessor()
         std::make_unique<juce::AudioParameterFloat>(
             paramAuxLevel, "Aux Level",
             juce::NormalisableRange<float>(0.0f, 1.0f), 1.0f));
+
+    // --- Tuning (Task 4b) ----------------------------------------------------
+    //
+    // Coarse: integer semitones, -24..+24, default 0.  AudioParameterInt with
+    // stepSize 1.0 (default) → integer steps.
+    // Fine: cents, -100..+100, default 0.  Rendered as fine / 100 semitones.
+    // Both are added on top of the live pitch bend in
+    // PlaitsSynthVoice::renderNextBlock (total = bend + coarse + fine/100).
+    // At coarse = 0, fine = 0, and a centred wheel the offset is exactly 0,
+    // so the note is exactly in tune.
+    pCoarse = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterInt>(
+            paramCoarse, "Coarse Tune", -24, 24, 0));
+    pFine = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramFine, "Fine Tune",
+            juce::NormalisableRange<float>(-100.0f, 100.0f), 0.0f));
+
+    // --- LPG colour / decay (Task 4b) ----------------------------------------
+    //
+    // Drives the Plaits low-pass gate (PlaitsVoice::render → Patch):
+    //   lpgColour → patch.lpg_colour (HF bleed; raises gate cutoff)
+    //   lpgDecay  → patch.decay      (gate release length; 0.5 = mid)
+    // Both are 0..1 linear, default 0.5, applied each block so they affect
+    // sounding notes (incl. release) immediately.  See STATUS.md for the
+    // exact voice.cc semantics.
+    pLpgColour = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramLpgColour, "LPG Colour",
+            juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
+    pLpgDecay = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramLpgDecay, "LPG Decay",
+            juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
+
+    // --- Modulation matrix (Task 4c-1) --------------------------------------
+    //
+    // 12 bipolar (-1..+1) mod-amount parameters: three sources (envelope,
+    // velocity, mod wheel) x four destinations (harmonics, timbre, morph,
+    // pitch).  All default to 0.0 EXCEPT modWheelTimbre, which defaults to
+    // 0.5 so the existing CC1->timbre routing is preserved by the matrix.
+    // The "mod" prefix lets the UI group them.  Computed once per block in
+    // PlaitsSynthVoice::renderNextBlock (see there for the formulas).
+    const juce::NormalisableRange<float> bipolar (-1.0f, 1.0f);
+    pModEnvHarmonics   = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramModEnvHarmonics,   "Env -> Harmonics",  bipolar, 0.0f));
+    pModEnvTimbre      = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramModEnvTimbre,      "Env -> Timbre",     bipolar, 0.0f));
+    pModEnvMorph       = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramModEnvMorph,       "Env -> Morph",      bipolar, 0.0f));
+    pModEnvPitch       = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramModEnvPitch,       "Env -> Pitch",      bipolar, 0.0f));
+    pModVelHarmonics   = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramModVelHarmonics,   "Velocity -> Harmonics", bipolar, 0.0f));
+    pModVelTimbre      = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramModVelTimbre,      "Velocity -> Timbre",  bipolar, 0.0f));
+    pModVelMorph       = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramModVelMorph,       "Velocity -> Morph",   bipolar, 0.0f));
+    pModVelPitch       = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramModVelPitch,       "Velocity -> Pitch",   bipolar, 0.0f));
+    pModWheelHarmonics = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramModWheelHarmonics, "Mod Wheel -> Harmonics", bipolar, 0.0f));
+    pModWheelTimbre    = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramModWheelTimbre,    "Mod Wheel -> Timbre",  bipolar, 0.5f));
+    pModWheelMorph     = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramModWheelMorph,     "Mod Wheel -> Morph",   bipolar, 0.0f));
+    pModWheelPitch     = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramModWheelPitch,     "Mod Wheel -> Pitch",   bipolar, 0.0f));
 
     // --- Create the 8-voice pool (message thread) ----------------------------
     //
@@ -220,6 +316,48 @@ void MutableAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
                              ? static_cast<juce::AudioParameterFloat*>(pAuxLevel)->get()
                              : 1.0f;
 
+    // ---- Tuning + LPG (Task 4b) ---------------------------------------------
+    const float coarse    = (pCoarse    != nullptr)
+                             ? static_cast<float>(static_cast<juce::AudioParameterInt*>(pCoarse)->get())
+                             : 0.0f;
+    const float fine      = (pFine      != nullptr)
+                             ? static_cast<juce::AudioParameterFloat*>(pFine)->get()
+                             : 0.0f;
+    const float lpgColour = (pLpgColour != nullptr)
+                             ? static_cast<juce::AudioParameterFloat*>(pLpgColour)->get()
+                             : 0.5f;
+    const float lpgDecay  = (pLpgDecay  != nullptr)
+                             ? static_cast<juce::AudioParameterFloat*>(pLpgDecay)->get()
+                             : 0.5f;
+
+    // ---- Modulation matrix amounts (Task 4c-1) -------------------------------
+    // Bipolar -1..+1, default 0 (modWheelTimbre defaults to 0.5).  Read once
+    // per block into the snapshot below.
+    const float modEnvHarmonics   = (pModEnvHarmonics   != nullptr)
+                                     ? static_cast<juce::AudioParameterFloat*>(pModEnvHarmonics)->get()   : 0.0f;
+    const float modEnvTimbre      = (pModEnvTimbre      != nullptr)
+                                     ? static_cast<juce::AudioParameterFloat*>(pModEnvTimbre)->get()      : 0.0f;
+    const float modEnvMorph       = (pModEnvMorph       != nullptr)
+                                     ? static_cast<juce::AudioParameterFloat*>(pModEnvMorph)->get()       : 0.0f;
+    const float modEnvPitch       = (pModEnvPitch       != nullptr)
+                                     ? static_cast<juce::AudioParameterFloat*>(pModEnvPitch)->get()       : 0.0f;
+    const float modVelHarmonics   = (pModVelHarmonics   != nullptr)
+                                     ? static_cast<juce::AudioParameterFloat*>(pModVelHarmonics)->get()   : 0.0f;
+    const float modVelTimbre      = (pModVelTimbre      != nullptr)
+                                     ? static_cast<juce::AudioParameterFloat*>(pModVelTimbre)->get()      : 0.0f;
+    const float modVelMorph       = (pModVelMorph       != nullptr)
+                                     ? static_cast<juce::AudioParameterFloat*>(pModVelMorph)->get()       : 0.0f;
+    const float modVelPitch       = (pModVelPitch       != nullptr)
+                                     ? static_cast<juce::AudioParameterFloat*>(pModVelPitch)->get()       : 0.0f;
+    const float modWheelHarmonics = (pModWheelHarmonics != nullptr)
+                                     ? static_cast<juce::AudioParameterFloat*>(pModWheelHarmonics)->get() : 0.0f;
+    const float modWheelTimbre    = (pModWheelTimbre    != nullptr)
+                                     ? static_cast<juce::AudioParameterFloat*>(pModWheelTimbre)->get()    : 0.5f;
+    const float modWheelMorph     = (pModWheelMorph     != nullptr)
+                                     ? static_cast<juce::AudioParameterFloat*>(pModWheelMorph)->get()     : 0.0f;
+    const float modWheelPitch     = (pModWheelPitch     != nullptr)
+                                     ? static_cast<juce::AudioParameterFloat*>(pModWheelPitch)->get()     : 0.0f;
+
     // ---- Take a snapshot and give it to every voice -------------------------
     //
     // The snapshot is a plain struct written on the audio thread immediately
@@ -237,6 +375,22 @@ void MutableAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     voiceParams.bendRange = bendRange;
     voiceParams.mix       = mix;
     voiceParams.auxLevel  = auxLevel;
+    voiceParams.coarse    = coarse;
+    voiceParams.fine      = fine;
+    voiceParams.lpgColour = lpgColour;
+    voiceParams.lpgDecay  = lpgDecay;
+    voiceParams.modEnvHarmonics   = modEnvHarmonics;
+    voiceParams.modEnvTimbre      = modEnvTimbre;
+    voiceParams.modEnvMorph       = modEnvMorph;
+    voiceParams.modEnvPitch       = modEnvPitch;
+    voiceParams.modVelHarmonics   = modVelHarmonics;
+    voiceParams.modVelTimbre      = modVelTimbre;
+    voiceParams.modVelMorph       = modVelMorph;
+    voiceParams.modVelPitch       = modVelPitch;
+    voiceParams.modWheelHarmonics = modWheelHarmonics;
+    voiceParams.modWheelTimbre    = modWheelTimbre;
+    voiceParams.modWheelMorph     = modWheelMorph;
+    voiceParams.modWheelPitch     = modWheelPitch;
 
     for (int i = 0; i < synth_.getNumVoices(); ++i)
     {

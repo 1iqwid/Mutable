@@ -71,6 +71,26 @@ private:
     static const juce::String paramVoices;
     static const juce::String paramMix;
     static const juce::String paramAuxLevel;
+    static const juce::String paramCoarse;
+    static const juce::String paramFine;
+    static const juce::String paramLpgColour;
+    static const juce::String paramLpgDecay;
+    // ---- Task 4c-1: modulation matrix (envelope / velocity / mod wheel) ----
+    // Bipolar -1..+1 mod amounts.  All default to 0.0 EXCEPT modWheelTimbre
+    // which defaults to 0.5 so the existing (temporary) CC1->timbre routing is
+    // preserved by the matrix.  The "mod" prefix lets the UI group them.
+    static const juce::String paramModEnvHarmonics;
+    static const juce::String paramModEnvTimbre;
+    static const juce::String paramModEnvMorph;
+    static const juce::String paramModEnvPitch;
+    static const juce::String paramModVelHarmonics;
+    static const juce::String paramModVelTimbre;
+    static const juce::String paramModVelMorph;
+    static const juce::String paramModVelPitch;
+    static const juce::String paramModWheelHarmonics;
+    static const juce::String paramModWheelTimbre;
+    static const juce::String paramModWheelMorph;
+    static const juce::String paramModWheelPitch;
 
     //==========================================================================
     // Maximum number of voices — a compile-time constant (Phase 3d).  All
@@ -103,6 +123,23 @@ private:
     juce::RangedAudioParameter* pVoices    = nullptr;
     juce::RangedAudioParameter* pMix       = nullptr;
     juce::RangedAudioParameter* pAuxLevel  = nullptr;
+    juce::RangedAudioParameter* pCoarse    = nullptr;
+    juce::RangedAudioParameter* pFine      = nullptr;
+    juce::RangedAudioParameter* pLpgColour = nullptr;
+    juce::RangedAudioParameter* pLpgDecay  = nullptr;
+    // ---- Task 4c-1: modulation matrix amounts (bipolar -1..+1) -------------
+    juce::RangedAudioParameter* pModEnvHarmonics   = nullptr;
+    juce::RangedAudioParameter* pModEnvTimbre      = nullptr;
+    juce::RangedAudioParameter* pModEnvMorph       = nullptr;
+    juce::RangedAudioParameter* pModEnvPitch       = nullptr;
+    juce::RangedAudioParameter* pModVelHarmonics   = nullptr;
+    juce::RangedAudioParameter* pModVelTimbre      = nullptr;
+    juce::RangedAudioParameter* pModVelMorph       = nullptr;
+    juce::RangedAudioParameter* pModVelPitch       = nullptr;
+    juce::RangedAudioParameter* pModWheelHarmonics = nullptr;
+    juce::RangedAudioParameter* pModWheelTimbre    = nullptr;
+    juce::RangedAudioParameter* pModWheelMorph     = nullptr;
+    juce::RangedAudioParameter* pModWheelPitch     = nullptr;
 
     //==========================================================================
     // Shared active-voice count (Phase 3d).  Owned by the processor; every

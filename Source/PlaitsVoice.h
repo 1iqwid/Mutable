@@ -77,7 +77,8 @@ public:
     /// Calling prepare() again re-initialises everything (safe).
     void prepare (double hostSampleRate);
 
-    // Safe to call from the MIDI / message thread.
+    // Safe to call from the audio thread (PlaitsSynthVoice::renderNextBlock).
+    // No allocation, locks, or file I/O.
     void setEngine (int engineIndex);         // 0..23 (clamped)
     void setParams (float harmonics,          // 0..1 (clamped)
                     float timbre,             // 0..1 (clamped)
@@ -85,10 +86,31 @@ public:
     void noteOn  (int midiNote, float velocity);   // velocity 0..1
     void noteOff ();
 
+    /// Snap the internal "previous" ramp values (prevHarmonics_ / prevTimbre_
+    /// / prevMorph_ / prevPitch_) to the current targets (harmonics_ /
+    /// timbre_ / morph_ / pitchOffset_) so the next render() does NOT ramp
+    /// from a stale value.  Called by noteOn() so a new note starts cleanly.
+    /// No allocation, locks, or file I/O.
+    void snapToParams();
+
+    /// Low-pass gate (LPG) parameters, mapped to the Plaits Patch:
+    ///   lpgColour → patch.lpg_colour (HF bleed; also raises gate cutoff)
+    ///   decay     → patch.decay      (gate release length; 0.5 = mid)
+    /// Both are clamped to 0..1 and applied on the next render().  Called
+    /// from the audio thread each block (before render()); they take effect
+    /// immediately, so changing them affects sounding notes (incl. release).
+    void setLpg (float lpgColour, float decay)
+    {
+        lpgColour_ = lpgColour < 0.0f ? 0.0f : (lpgColour > 1.0f ? 1.0f : lpgColour);
+        lpgDecay_  = decay     < 0.0f ? 0.0f : (decay     > 1.0f ? 1.0f : decay);
+    }
+
     /// Pitch offset in semitones, added to the MIDI note value passed to
     /// Plaits (default 0.0f).  A positive value raises the pitch; at 0.0f
     /// the note is passed through unmodified, so tuning stays exact.
-    /// Called from the MIDI / message thread (pitch wheel, note-on).
+    /// Called from the audio thread (PlaitsSynthVoice::renderNextBlock),
+    /// which is the single source of truth for the pitch offset.
+    /// No allocation, locks, or file I/O.
     void setPitchOffset (float semitones)
     {
         pitchOffset_ = semitones;
@@ -129,6 +151,26 @@ private:
     // MIDI note value when the Plaits Patch is built in render().  Default
     // 0.0f => note passed through unmodified => exact tuning at zero bend.
     float pitchOffset_ = 0.0f;
+
+    // Low-pass gate parameters (written from the audio thread via setLpg(),
+    // read in render() when the Patch is built).  Defaults match the previous
+    // hard-coded values (decay 0.5 = mid-range, lpg_colour 0.0 = no HF bleed)
+    // so behaviour is unchanged until the parameters are wired up.
+    float lpgColour_ = 0.0f;   // → patch.lpg_colour
+    float lpgDecay_  = 0.5f;   // → patch.decay
+
+    // Ramping state for harmonics / timbre / morph / pitch offset.  render()
+    // ramps each of these linearly from its previous value (the value used in
+    // the PREVIOUS render() call) to its current target across the 24-sample
+    // chunks of a host block, to avoid zipper noise when a parameter changes.
+    // They are plain members — no allocation.  snapToParams() (called by
+    // noteOn()) resets them to the current targets so a new note starts
+    // without ramping from a stale value.  See PlaitsVoice::render for the
+    // exact ramp math.
+    float prevHarmonics_ = 0.5f;   // last harmonics used (ramp start)
+    float prevTimbre_    = 0.5f;   // last timbre    used (ramp start)
+    float prevMorph_     = 0.5f;   // last morph     used (ramp start)
+    float prevPitch_     = 0.0f;   // last pitch offset used (ramp start)
 
     // Tracks the trigger value actually sent to Plaits on the last render()
     // call (true = trigger was held high, false = low / unpatched).

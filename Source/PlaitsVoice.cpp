@@ -67,6 +67,12 @@ void PlaitsVoice::noteOn (int midiNote, float velocity)
     midiNote_ = midiNote;
     velocity_ = velocity < 0.0f ? 0.0f : (velocity > 1.0f ? 1.0f : velocity);
 
+    // Snap the ramp "previous" values to the current targets so this new note
+    // does NOT ramp from the previous note's harmonics / timbre / morph /
+    // pitch offset (that would cause an audible glitch on note start).  This
+    // is the "snap on note start" requirement of the mod matrix.
+    snapToParams();
+
     if (lastTriggerHigh_)
     {
         // Plaits' internal trigger_state_ is still latched high from a
@@ -88,6 +94,14 @@ void PlaitsVoice::noteOff ()
 void PlaitsVoice::setLevel (float level)
 {
     level_ = level < 0.0f ? 0.0f : (level > 1.0f ? 1.0f : level);
+}
+
+void PlaitsVoice::snapToParams()
+{
+    prevHarmonics_ = harmonics_;
+    prevTimbre_    = timbre_;
+    prevMorph_     = morph_;
+    prevPitch_     = pitchOffset_;
 }
 
 //==============================================================================
@@ -116,19 +130,20 @@ void PlaitsVoice::render (float* out, float* aux, int numSamples)
     const double neededIn = static_cast<double> (numSamples) * ratio_ + 2.0;
     int          totalIn  = scratchCount_;
 
-    // Build the Patch and Modulations once per render() call (they don't
-    // change within a block of samples for a single voice).
+    // Build the Patch and Modulations once per render() call (the note /
+    // engine / trigger fields are constant within a block; harmonics /
+    // timbre / morph / pitch are ramped per-chunk — see below).
     plaits::Patch patch;
-    patch.note                      = static_cast<float> (midiNote_) + pitchOffset_;
-    patch.harmonics                 = harmonics_;
-    patch.timbre                    = timbre_;
-    patch.morph                     = morph_;
+      patch.harmonics = prevHarmonics_;
+    patch.timbre    = prevTimbre_;
+    patch.morph     = prevMorph_;
+    patch.note      = static_cast<float> (midiNote_) + prevPitch_;
     patch.frequency_modulation_amount = 0.0f;
     patch.timbre_modulation_amount    = 0.0f;
     patch.morph_modulation_amount     = 0.0f;
     patch.engine                    = engineIndex_;
-    patch.decay                     = 0.5f;   // mid-range LPG decay
-    patch.lpg_colour                = 0.0f;   // no HF bleed
+    patch.decay                     = lpgDecay_;   // gate release length (0..1)
+    patch.lpg_colour                = lpgColour_;  // HF bleed (0..1)
 
     plaits::Modulations mod;
     mod.engine            = 0.5f;   // mid CV → no engine drift
@@ -159,6 +174,37 @@ void PlaitsVoice::render (float* out, float* aux, int numSamples)
     }
 
     const float int16Scale = 1.0f / 32768.0f;
+
+    // ---- Parameter ramping (zipper-noise avoidance, Task 4c-1) -------------
+    //
+    // harmonics, timbre, morph and the pitch offset are ramped linearly from
+    // their previous values (the values used in the PREVIOUS render() call,
+    // held in prevHarmonics_ / prevTimbre_ / prevMorph_ / prevPitch_) to their
+    // current targets (harmonics_ / timbre_ / morph_ / pitchOffset_) across
+    // the 24-sample chunks of this host block.  This removes zipper noise when
+    // a mod-matrix amount (or a base parameter) changes between blocks.
+    //
+    // The "previous" value is captured once, here, and is the value at the END
+    // of the previous render() call (== the previous target).  Each chunk then
+    // advances the value a fixed fraction (toGen / neededIn) of the total
+    // delta.  At the end of this call the value has advanced by
+    // (totalIn - initialTotalIn) / neededIn, which is exactly the fraction of
+    // the host block generated this call — so consecutive calls ramp
+    // continuously.  After a note starts, snapToParams() (in noteOn()) makes
+    // prev == target so the delta is 0 and there is no ramp from a stale value.
+    const float rampHarmStart = prevHarmonics_;
+    const float rampTimbStart = prevTimbre_;
+    const float rampMorphStart = prevMorph_;
+    const float rampPitchStart = prevPitch_;
+    const float rampHarmDelta = harmonics_ - rampHarmStart;
+    const float rampTimbDelta = timbre_    - rampTimbStart;
+    const float rampMorphDelta = morph_    - rampMorphStart;
+    const float rampPitchDelta = pitchOffset_ - rampPitchStart;
+
+    // The retrigger flush renders 5 samples before the main loop, so the ramp
+    // start for those samples is captured here (they use the "previous" values
+    // — correct, as they precede the ramped region).
+    int rampGenerated = 0;   // samples generated since the ramp start
 
     // ---- Retrigger handling -----------------------------------------------
     //
@@ -205,6 +251,27 @@ void PlaitsVoice::render (float* out, float* aux, int numSamples)
             std::min (static_cast<size_t> (spaceLeft),
                       static_cast<size_t> (plaits::kMaxBlockSize)));
 
+        // ---- Ramped parameter values for this chunk ------------------------
+        // Each chunk advances the value by (toGen / neededIn) of the total
+        // delta, starting from the value at the beginning of the ramp (the
+        // previous render() call's value).  rampGenerated tracks how many
+        // samples have been generated this call, so consecutive chunks (and
+        // consecutive render() calls) ramp continuously across the host block.
+        {
+            const float frac =
+                std::min (1.0f, (rampGenerated + toGen) / static_cast<float> (neededIn));
+            const float h = rampHarmStart  + rampHarmDelta  * frac;
+            const float t = rampTimbStart  + rampTimbDelta  * frac;
+            const float m = rampMorphStart + rampMorphDelta * frac;
+            const float p = rampPitchStart + rampPitchDelta * frac;
+
+            patch.harmonics = h < 0.0f ? 0.0f : (h > 1.0f ? 1.0f : h);
+            patch.timbre    = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);
+            patch.morph     = m < 0.0f ? 0.0f : (m > 1.0f ? 1.0f : m);
+            patch.note      = static_cast<float> (midiNote_) + p;
+        }
+        rampGenerated += toGen;
+
         // Call Plaits.  Voice::Render writes toFrame (short out, short aux).
         plaits::Voice::Frame frames[plaits::kMaxBlockSize];
         voice_->Render (patch, mod, frames, static_cast<size_t> (toGen));
@@ -224,6 +291,26 @@ void PlaitsVoice::render (float* out, float* aux, int numSamples)
     // with no render between them), where lastTriggerHigh_ is still true
     // from the previous render even though noteOn_ is now false.
     lastTriggerHigh_ = (mod.trigger > 0.1f);
+
+    // ---- Update the ramp "previous" values --------------------------------
+    // The value used for the LAST chunk of this call is the ramp start
+    // advanced by (totalIn - initialTotalIn) / neededIn of the delta.  Store
+    // that as the new prev* so the NEXT call ramps from exactly where this
+    // one ended (continuous ramp across host blocks).  If no samples were
+    // generated (e.g. scratch buffer already full) the values are unchanged.
+    //
+    // rampGenerated holds the number of samples generated this call, so:
+    const float fracEnd = std::min (1.0f, rampGenerated / static_cast<float> (neededIn));
+    prevHarmonics_ = rampHarmStart  + rampHarmDelta  * fracEnd;
+    prevTimbre_    = rampTimbStart  + rampTimbDelta  * fracEnd;
+    prevMorph_     = rampMorphStart + rampMorphDelta * fracEnd;
+    prevPitch_     = rampPitchStart + rampPitchDelta * fracEnd;
+    // Clamp the stored prev values to the same range as the patch fields
+    // (harmonics / timbre / morph 0..1; pitch is unbounded but we clamp the
+    // stored value to the target to avoid drift).
+    if (prevHarmonics_ < 0.0f) prevHarmonics_ = 0.0f; else if (prevHarmonics_ > 1.0f) prevHarmonics_ = 1.0f;
+    if (prevTimbre_    < 0.0f) prevTimbre_    = 0.0f; else if (prevTimbre_    > 1.0f) prevTimbre_    = 1.0f;
+    if (prevMorph_     < 0.0f) prevMorph_     = 0.0f; else if (prevMorph_     > 1.0f) prevMorph_     = 1.0f;
 
     // ---- Step 2: Resample to host rate ------------------------------------
     //
