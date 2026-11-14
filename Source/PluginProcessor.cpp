@@ -33,6 +33,12 @@ const juce::String MutableAudioProcessor::paramModWheelHarmonics ("modWheelHarmo
 const juce::String MutableAudioProcessor::paramModWheelTimbre    ("modWheelTimbre");
 const juce::String MutableAudioProcessor::paramModWheelMorph     ("modWheelMorph");
 const juce::String MutableAudioProcessor::paramModWheelPitch     ("modWheelPitch");
+const juce::String MutableAudioProcessor::paramLfoShape          ("lfoShape");
+const juce::String MutableAudioProcessor::paramLfoRate           ("lfoRate");
+const juce::String MutableAudioProcessor::paramModLfoHarmonics   ("modLfoHarmonics");
+const juce::String MutableAudioProcessor::paramModLfoTimbre      ("modLfoTimbre");
+const juce::String MutableAudioProcessor::paramModLfoMorph       ("modLfoMorph");
+const juce::String MutableAudioProcessor::paramModLfoPitch       ("modLfoPitch");
 
 //==============================================================================
 MutableAudioProcessor::MutableAudioProcessor()
@@ -197,6 +203,38 @@ MutableAudioProcessor::MutableAudioProcessor()
     pModWheelPitch     = apvts_.createAndAddParameter (
         std::make_unique<juce::AudioParameterFloat>(
             paramModWheelPitch,     "Mod Wheel -> Pitch",   bipolar, 0.0f));
+
+    // --- LFO (Task 4c-2a) ------------------------------------------------------
+    // Shape (0..5: Sine, Triangle, Saw Up, Saw Down, Square, S&H) and rate
+    // (0.05..20 Hz, skewed to centre 1 Hz, default 1 Hz), plus the four
+    // bipolar mod amounts (same pattern as the Task 4c-1 mod matrix).
+    {
+        auto lfoShape = std::make_unique<juce::AudioParameterChoice> (
+            paramLfoShape, "LFO Shape",
+            juce::StringArray {"Sine", "Triangle", "Saw Up", "Saw Down",
+                               "Square", "S&H"},
+            0);
+        pLfoShape = apvts_.createAndAddParameter (std::move (lfoShape));
+    }
+    {
+        juce::NormalisableRange<float> lfoRateRange (0.05f, 20.0f, 0.0f);
+                lfoRateRange.setSkewForCentre (1.0f);
+        auto lfoRate = std::make_unique<juce::AudioParameterFloat> (
+                paramLfoRate, "LFO Rate", lfoRateRange, 1.0f);
+        pLfoRate = apvts_.createAndAddParameter (std::move (lfoRate));
+    }
+    pModLfoHarmonics = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramModLfoHarmonics,   "LFO -> Harmonics",  bipolar, 0.0f));
+    pModLfoTimbre    = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramModLfoTimbre,      "LFO -> Timbre",     bipolar, 0.0f));
+    pModLfoMorph     = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramModLfoMorph,       "LFO -> Morph",      bipolar, 0.0f));
+    pModLfoPitch     = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramModLfoPitch,       "LFO -> Pitch",      bipolar, 0.0f));
 
     // --- Create the 8-voice pool (message thread) ----------------------------
     //

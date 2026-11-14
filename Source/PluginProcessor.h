@@ -91,6 +91,13 @@ private:
     static const juce::String paramModWheelTimbre;
     static const juce::String paramModWheelMorph;
     static const juce::String paramModWheelPitch;
+    // ---- Task 4c-2a: LFO (shape, rate) and its four mod amounts -------------
+    static const juce::String paramLfoShape;
+    static const juce::String paramLfoRate;
+    static const juce::String paramModLfoHarmonics;
+    static const juce::String paramModLfoTimbre;
+    static const juce::String paramModLfoMorph;
+    static const juce::String paramModLfoPitch;
 
     //==========================================================================
     // Maximum number of voices — a compile-time constant (Phase 3d).  All
@@ -140,6 +147,13 @@ private:
     juce::RangedAudioParameter* pModWheelTimbre    = nullptr;
     juce::RangedAudioParameter* pModWheelMorph     = nullptr;
     juce::RangedAudioParameter* pModWheelPitch     = nullptr;
+    // ---- Task 4c-2a: LFO parameters -----------------------------------------
+    juce::RangedAudioParameter* pLfoShape          = nullptr;
+    juce::RangedAudioParameter* pLfoRate           = nullptr;
+    juce::RangedAudioParameter* pModLfoHarmonics   = nullptr;
+    juce::RangedAudioParameter* pModLfoTimbre      = nullptr;
+    juce::RangedAudioParameter* pModLfoMorph       = nullptr;
+    juce::RangedAudioParameter* pModLfoPitch       = nullptr;
 
     //==========================================================================
     // Shared active-voice count (Phase 3d).  Owned by the processor; every
