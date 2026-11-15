@@ -22,7 +22,7 @@ Percent of one core = ms/s divided by 10 (past benchmark notes got this wrong by
 
 ## Workflow rules
 - Git: private GitHub repo, branch per phase (currently working on main), a tag at
-  each phase end (v0.1-v0.3 exist), commit after each task with message
+  each phase end (v0.1-v0.4 exist), commit after each task with message
   "Phase X: ...". Ask before pushing, tagging, or any destructive git command; never
   rewrite history, force push, or delete branches. main must always build. Don't
   commit build output, IDE files, or large binaries (.gitignore covers them).
@@ -78,9 +78,8 @@ Percent of one core = ms/s divided by 10 (past benchmark notes got this wrong by
 - State: apvts_.state = ValueTree("State") must stay AFTER the last param is added.
 
 ## Roadmap
-Done: Phases 1-3 (tags v0.1-v0.3); 4a aux output, 4b tuning + LPG, 4c-1 mod matrix,
-4c-2 LFO, 4d unison, 4e plain functional UI, 4f presets (Phase 4 complete; v0.4 tag
-pending).
+Done: Phases 1-4 (tags v0.1-v0.4); 4a aux output, 4b tuning + LPG, 4c-1 mod matrix,
+4c-2 LFO, 4d unison, 4e plain functional UI, 4f presets.
 Next: Phase 5 visualizers (oscilloscope, envelope display), Phase 6 custom
 graphics (film-strip/SVG knobs, custom look-and-feel), Phase 7 polish, signing,
 installers. Planned but not set up: GitHub Actions CI building on macOS and Windows.

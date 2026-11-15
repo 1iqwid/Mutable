@@ -4,7 +4,7 @@ Last updated: 2026-11-14
 
 ## Current state
 
-Phases 1-4 complete (tags v0.1-v0.3; v0.4 tag pending Manny's OK).
+Phases 1-4 complete (tags v0.1-v0.4).
 Next: Phase 5 (visualizers).
 
 ## Build
@@ -102,7 +102,7 @@ cmake --build build --config Release --target MutableBench
 - Sustain pedal (CC64) is handled by the JUCE Synthesiser (not reimplemented).
 - No allocation, locks, or file I/O on the audio path.
 
-## Phase 4 - Full parameters and placeholder UI (COMPLETE, 2026-11-14)
+## Phase 4 - Full parameters and placeholder UI (COMPLETE, v0.4, 2026-11-14)
 
 Done: 4a, 4b, 4c-1, 4c-2, 4d, 4e, 4f. All 24 engines are selectable via the `engine` param (0..23, default 8).
 
