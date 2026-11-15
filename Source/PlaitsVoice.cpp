@@ -154,7 +154,11 @@ void PlaitsVoice::render (float* out, float* aux, int numSamples)
     patch.lpg_colour                = lpgColour_;  // HF bleed (0..1)
 
     plaits::Modulations mod;
-    mod.engine            = 0.5f;   // mid CV → no engine drift
+    // Engine CV is an OFFSET: Plaits selects patch.engine + mod.engine * 23
+    // (HysteresisQuantizer2::Process(base, value), voice.cc:122).  0 = no CV,
+    // as in Plaits' own test harness (plaits_test.cc).  0.5 would shift every
+    // engine up by ~11.5 slots.
+    mod.engine            = 0.0f;
     mod.note              = 0.0f;   // no V/OCT offset
     mod.frequency         = 0.0f;
     mod.harmonics         = 0.0f;
