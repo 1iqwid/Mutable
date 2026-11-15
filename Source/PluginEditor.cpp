@@ -202,6 +202,7 @@ MutableAudioProcessorEditor::MutableAudioProcessorEditor (MutableAudioProcessor&
                      + kVisH + kGap;
 
     addAndMakeVisible (scope_);
+    setupScopeControls();
     setupPresetBar();
     setSize (width, height);
 }
@@ -209,6 +210,31 @@ MutableAudioProcessorEditor::MutableAudioProcessorEditor (MutableAudioProcessor&
 MutableAudioProcessorEditor::~MutableAudioProcessorEditor()
 {
     stopTimer();
+}
+
+//==============================================================================
+// Scope controls (Phase 5b): view settings only, kept in the editor.
+//==============================================================================
+void MutableAudioProcessorEditor::setupScopeControls()
+{
+    scopeZoomLabel_.setText ("Zoom", juce::dontSendNotification);
+    scopeZoomLabel_.setFont (juce::Font (juce::FontOptions (13.0f)));
+    scopeZoomLabel_.setJustificationType (juce::Justification::centredRight);
+
+    scopeZoom_.setSliderStyle (juce::Slider::LinearHorizontal);
+    scopeZoom_.setTextBoxStyle (juce::Slider::TextBoxRight, false, 64, 18);
+    scopeZoom_.setRange (ScopeView::kMinWindowMs, ScopeView::kMaxWindowMs, 0.1);
+    scopeZoom_.setSkewFactorFromMidPoint (10.0);
+    scopeZoom_.textFromValueFunction = [] (double v) { return formatValue (v, 1, "ms"); };
+    scopeZoom_.setValue (ScopeView::kDefaultWindowMs, juce::dontSendNotification);
+    scopeZoom_.onValueChange = [this] { scope_.setWindowMs (scopeZoom_.getValue()); };
+
+    scopeTrigger_.setToggleState (true, juce::dontSendNotification);
+    scopeTrigger_.onClick = [this] { scope_.setTriggerEnabled (scopeTrigger_.getToggleState()); };
+
+    addAndMakeVisible (scopeZoomLabel_);
+    addAndMakeVisible (scopeZoom_);
+    addAndMakeVisible (scopeTrigger_);
 }
 
 //==============================================================================
@@ -390,4 +416,11 @@ void MutableAudioProcessorEditor::resized()
     scopeSection_ = { kGap, y, getWidth() - 2 * kGap, kVisH };
     scope_.setBounds (scopeSection_.withTrimmedTop (kTitleH).reduced (kPad, 0)
                                    .withTrimmedBottom (kPad));
+
+    // Title strip, right side: [Trigger] Zoom [-----slider-----| 20.0 ms]
+    auto strip = scopeSection_.withHeight (kTitleH).reduced (kPad, 1);
+    scopeZoom_.setBounds (strip.removeFromRight (260));
+    scopeZoomLabel_.setBounds (strip.removeFromRight (50));
+    strip.removeFromRight (12);
+    scopeTrigger_.setBounds (strip.removeFromRight (80));
 }

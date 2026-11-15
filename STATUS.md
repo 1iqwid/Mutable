@@ -5,7 +5,7 @@ Last updated: 2026-11-15
 ## Current state
 
 Phases 1-4 complete (tags v0.1-v0.4).
-Phase 5 (visualizers) in progress: 5a done. Next: 5b scope trigger + zoom.
+Phase 5 (visualizers) in progress: 5a, 5b done. Next: 5c Out/Aux on the scope.
 
 ## Build
 
@@ -225,6 +225,18 @@ Done: 4a, 4b, 4c-1, 4c-2, 4d, 4e, 4f. All 24 engines are selectable via the `eng
 - Editor: window taller by a 200 px full-width visualizer row at the bottom.
 - Verified in Ableton by Manny.
 
+### Task 5b - Scope trigger + zoom (DONE, 2026-11-15)
+- ScopeView: rising zero-crossing trigger (arms below -0.01, newest crossing that
+  still leaves a full window, sub-sample interpolated start); searches at least
+  30 ms back; free-runs if no crossing (silence, DC).
+- Zoom slider 1-100 ms (default 20) and Trigger toggle in the scope title strip.
+  View settings only (not APVTS params, not saved).
+- Engine-CV bug fixed in the same session: PlaitsVoice passed mod.engine = 0.5,
+  but Plaits treats it as an offset (patch.engine + cv * 23), so every engine
+  played ~12 slots higher and 13-24 all played Hi-Hat. Now 0.0, as in
+  plaits_test.cc. Manny verified all 24 engines match their names.
+- Verified in Ableton by Manny.
+
 ## Phase 6 - Custom graphics
 - Film strip or SVG knobs, custom look-and-feel classes, faux display skin around
   the visualizers, resizable and high-DPI friendly, assets embedded as binary data.
@@ -236,6 +248,7 @@ Done: 4a, 4b, 4c-1, 4c-2, 4d, 4e, 4f. All 24 engines are selectable via the `eng
 
 ## Known issues / not yet verified in a DAW
 (Delete each line once it has been tested.)
+- CPU benchmark needs a re-run after the engine-CV fix (old per-engine numbers invalid).
 - LFO at 20 Hz with a large buffer (2048) not tested for stepping (no audio
   interface; buffer size unknown).
 - Retrigger noteOff -> noteOn (release then retrigger) not verified.
@@ -269,6 +282,9 @@ Windows x64. Percent of one core = ms/s / 10.
 - 4a re-run with the aux path active: heaviest engine is 21 at 58.6 ms/s = 5.9 % of
   one core; all outputs finite. Compare engines within a run only.
 - Conclusion: 8 voices of any single engine are well under 25 % of one core.
+- INVALID per engine (found 2026-11-15): both runs had the engine-CV bug (see 5b), so
+  engine N actually measured engine min(N+12, 23). Indices 11-23 all measured Hi-Hat
+  and indices 0-10 never measured the engines labelled. Needs a re-run.
 
 ## Plaits API notes (reference)
 Source: `third_party/plaits/dsp/voice.{h,cc}`, `engine/engine.h`, `dsp/dsp.h`,

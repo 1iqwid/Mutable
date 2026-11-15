@@ -98,6 +98,10 @@ private:
     // Phase 5: visualizer row below the parameter rows.
     ScopeView scope_;
     juce::Rectangle<int> scopeSection_;
+    juce::Label scopeZoomLabel_;
+    juce::Slider scopeZoom_;            // view setting (ms), not a parameter
+    juce::ToggleButton scopeTrigger_ { "Trigger" };
+    void setupScopeControls();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MutableAudioProcessorEditor)
 };
