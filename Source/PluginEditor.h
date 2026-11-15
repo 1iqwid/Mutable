@@ -10,7 +10,8 @@
 /// APVTS through attachments; the editor never touches DSP objects.  Custom
 /// graphics come in Phase 6.
 class MutableAudioProcessorEditor final
-    : public juce::AudioProcessorEditor
+    : public juce::AudioProcessorEditor,
+      private juce::Timer
 {
 public:
     explicit MutableAudioProcessorEditor (MutableAudioProcessor&);
@@ -21,6 +22,19 @@ public:
     void resized() override;
 
 private:
+    // Preset bar (Phase 4f).  The name label is refreshed on a slow timer so it
+    // also follows state restored by the host while the editor is open.
+    void timerCallback() override;
+    void setupPresetBar();
+    void refreshPresetName();
+    void showLoadDialog();
+    void showSaveDialog();
+
+    juce::TextButton initButton_ { "Init" }, loadButton_ { "Load..." },
+                     saveButton_ { "Save..." }, prevButton_ { "<" }, nextButton_ { ">" };
+    juce::Label presetName_;
+    std::unique_ptr<juce::FileChooser> chooser_;   // must outlive launchAsync
+
     using APVTS = juce::AudioProcessorValueTreeState;
 
     //==========================================================================

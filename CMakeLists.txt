@@ -198,7 +198,10 @@ target_sources(Mutable
         Source/PlaitsVoice.h
         Source/PlaitsVoice.cpp
         Source/PlaitsSynthVoice.h
-        Source/PlaitsSynthVoice.cpp)
+        Source/PlaitsSynthVoice.cpp
+        Source/PresetManager.h
+        Source/PresetManager.cpp
+        Source/EngineInfo.h)
 
 # Not using web views or curl yet (matches the JUCE CMake example defaults).
 target_compile_definitions(Mutable

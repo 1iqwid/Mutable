@@ -11,6 +11,7 @@ namespace
     constexpr int kPad     = 8;     // inner padding of a section
     constexpr int kTitleH  = 22;    // section title strip
     constexpr int kGap     = 10;    // gap between sections / rows
+    constexpr int kBarH    = 30;    // preset bar height
 
     const juce::Colour kBackground  { 0xff262626 };
     const juce::Colour kSectionFill { 0xff353535 };
@@ -194,11 +195,99 @@ MutableAudioProcessorEditor::MutableAudioProcessorEditor (MutableAudioProcessor&
             w += sectionWidth (sections_[(size_t) idx]) + kGap;
         width = juce::jmax (width, w);
     }
-    const int height = kGap + (int) rows_.size() * (kTitleH + kKnobH + kPad + kGap);
+    const int height = kGap + kBarH + kGap
+                     + (int) rows_.size() * (kTitleH + kKnobH + kPad + kGap);
+
+    setupPresetBar();
     setSize (width, height);
 }
 
-MutableAudioProcessorEditor::~MutableAudioProcessorEditor() = default;
+MutableAudioProcessorEditor::~MutableAudioProcessorEditor()
+{
+    stopTimer();
+}
+
+//==============================================================================
+// Preset bar (Phase 4f)
+//==============================================================================
+void MutableAudioProcessorEditor::setupPresetBar()
+{
+    auto& pm = processorRef.getPresetManager();
+
+    initButton_.onClick = [this, &pm] { pm.initPreset(); refreshPresetName(); };
+    loadButton_.onClick = [this] { showLoadDialog(); };
+    saveButton_.onClick = [this] { showSaveDialog(); };
+    prevButton_.onClick = [this, &pm] { pm.loadAdjacentPreset (-1); refreshPresetName(); };
+    nextButton_.onClick = [this, &pm] { pm.loadAdjacentPreset (+1); refreshPresetName(); };
+
+    presetName_.setFont (juce::Font (juce::FontOptions (15.0f, juce::Font::bold)));
+    presetName_.setJustificationType (juce::Justification::centredLeft);
+    presetName_.setColour (juce::Label::backgroundColourId, kSectionFill);
+
+    for (juce::Component* c : { (juce::Component*) &initButton_, (juce::Component*) &loadButton_,
+                                (juce::Component*) &saveButton_, (juce::Component*) &prevButton_,
+                                (juce::Component*) &nextButton_, (juce::Component*) &presetName_ })
+        addAndMakeVisible (c);
+
+    refreshPresetName();
+    startTimerHz (4);
+}
+
+void MutableAudioProcessorEditor::timerCallback()
+{
+    refreshPresetName();
+}
+
+void MutableAudioProcessorEditor::refreshPresetName()
+{
+    const auto name = processorRef.getPresetManager().getPresetName();
+    if (presetName_.getText() != name)
+        presetName_.setText (name, juce::dontSendNotification);
+}
+
+void MutableAudioProcessorEditor::showLoadDialog()
+{
+    const auto folder = PresetManager::getPresetFolder();
+    folder.createDirectory();
+
+    chooser_ = std::make_unique<juce::FileChooser> (
+        "Load preset", folder, juce::String ("*") + PresetManager::kExtension);
+
+    chooser_->launchAsync (juce::FileBrowserComponent::openMode
+                               | juce::FileBrowserComponent::canSelectFiles,
+                           [this] (const juce::FileChooser& fc)
+                           {
+                               const auto file = fc.getResult();
+                               if (file != juce::File())
+                                   processorRef.getPresetManager().loadPreset (file);
+                               refreshPresetName();
+                           });
+}
+
+void MutableAudioProcessorEditor::showSaveDialog()
+{
+    const auto folder = PresetManager::getPresetFolder();
+    folder.createDirectory();
+
+    auto& pm = processorRef.getPresetManager();
+    const auto current = pm.getPresetName();
+    const auto initial = folder.getChildFile ((current == "Init" ? juce::String ("New Preset") : current)
+                                              + PresetManager::kExtension);
+
+    chooser_ = std::make_unique<juce::FileChooser> (
+        "Save preset", initial, juce::String ("*") + PresetManager::kExtension);
+
+    chooser_->launchAsync (juce::FileBrowserComponent::saveMode
+                               | juce::FileBrowserComponent::canSelectFiles
+                               | juce::FileBrowserComponent::warnAboutOverwriting,
+                           [this] (const juce::FileChooser& fc)
+                           {
+                               const auto file = fc.getResult();
+                               if (file != juce::File())
+                                   processorRef.getPresetManager().savePreset (file);
+                               refreshPresetName();
+                           });
+}
 
 //==============================================================================
 MutableAudioProcessorEditor::Knob&
@@ -253,7 +342,18 @@ void MutableAudioProcessorEditor::paint (juce::Graphics& g)
 
 void MutableAudioProcessorEditor::resized()
 {
-    int y = kGap;
+    // Preset bar: [Init] [Load...] [Save...] [<] [>] name
+    {
+        auto bar = juce::Rectangle<int> (kGap, kGap, getWidth() - 2 * kGap, kBarH);
+        initButton_.setBounds (bar.removeFromLeft (60));  bar.removeFromLeft (4);
+        loadButton_.setBounds (bar.removeFromLeft (80));  bar.removeFromLeft (4);
+        saveButton_.setBounds (bar.removeFromLeft (80));  bar.removeFromLeft (12);
+        prevButton_.setBounds (bar.removeFromLeft (30));  bar.removeFromLeft (4);
+        nextButton_.setBounds (bar.removeFromLeft (30));  bar.removeFromLeft (8);
+        presetName_.setBounds (bar.removeFromLeft (320));
+    }
+
+    int y = kGap + kBarH + kGap;
     for (const auto& row : rows_)
     {
         int x = kGap;

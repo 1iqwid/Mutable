@@ -4,8 +4,8 @@ Last updated: 2026-11-14
 
 ## Current state
 
-Phases 1-3 complete (tags v0.1-v0.3). Phase 4 in progress: 4a, 4b, 4c-1, 4c-2, 4d, 4e done.
-Next task: 4f (basic preset save and load).
+Phases 1-4 complete (tags v0.1-v0.3; v0.4 tag pending Manny's OK).
+Next: Phase 5 (visualizers).
 
 ## Build
 
@@ -102,9 +102,9 @@ cmake --build build --config Release --target MutableBench
 - Sustain pedal (CC64) is handled by the JUCE Synthesiser (not reimplemented).
 - No allocation, locks, or file I/O on the audio path.
 
-## Phase 4 - Full parameters and placeholder UI (IN PROGRESS)
+## Phase 4 - Full parameters and placeholder UI (COMPLETE, 2026-11-14)
 
-Done: 4a, 4b, 4c-1, 4c-2, 4d, 4e. Remaining: 4f presets. All 24 engines are selectable via the `engine` param (0..23, default 8).
+Done: 4a, 4b, 4c-1, 4c-2, 4d, 4e, 4f. All 24 engines are selectable via the `engine` param (0..23, default 8).
 
 ### Task 4a - Aux output, Mix and Aux Level (DONE)
 - Plaits aux output resampled and ADSR-applied like the main output, blended per
@@ -193,8 +193,19 @@ Done: 4a, 4b, 4c-1, 4c-2, 4d, 4e. Remaining: 4f presets. All 24 engines are sele
 - Verified in Ableton: layout, all knobs, engine captions, host automation of
   engine, double-click reset, save/reopen of a Live set restores all values.
 
-### Remaining Phase 4 tasks
-- 4f: basic preset save and load.
+### Task 4f - Basic presets (DONE, 2026-11-14)
+- Source/PresetManager.{h,cpp} (message thread only, owned by the processor):
+  preset file = the APVTS state XML (tag "State"), extension .mutablepreset, in
+  <user documents>/Mutable/Presets (created on first use).
+- Editor preset bar: Init, Load..., Save... (async FileChooser, overwrite warning),
+  < / > step through the folder alphabetically, current name label (4 Hz timer so
+  it follows host state restores).
+- Preset name is a property of the state tree ("presetName"), so DAW sessions keep it.
+- applyState() (used by loadPreset AND setStateInformation) resets every param to
+  its default before replaceState, so params missing from older presets/sessions
+  load at defaults instead of keeping current values.
+- Verified in Ableton: save/load, overwrite warning, prev/next, Init, name restored
+  with the Live set and after reopening the editor.
 
 ## Phase 5 - Visualizers
 - Oscilloscope: audio thread pushes summed output into a lock-free ring buffer; UI

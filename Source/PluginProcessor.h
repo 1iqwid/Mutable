@@ -4,6 +4,7 @@
 
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "PlaitsSynthVoice.h"
+#include "PresetManager.h"
 
 //==============================================================================
 /// The plugin processor.
@@ -57,6 +58,9 @@ public:
 
     /// The parameter tree, for the editor's attachments (message thread only).
     juce::AudioProcessorValueTreeState& getApvts() noexcept { return apvts_; }
+
+    /// Preset save / load (Phase 4f).  Message thread only.
+    PresetManager& getPresetManager() noexcept { return presetManager_; }
 
     //==========================================================================
     // Parameter IDs — stable strings, used for both the APVTS and state I/O.
@@ -122,6 +126,9 @@ private:
 
     // AudioProcessorValueTreeState: owns all parameters and their state.
     juce::AudioProcessorValueTreeState apvts_;
+
+    // Declared AFTER apvts_ (it holds a reference to it).
+    PresetManager presetManager_ { *this, apvts_ };
 
     // Cached parameter pointers for audio-thread reads.
     // Populated once in the constructor (message thread).

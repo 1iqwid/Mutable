@@ -264,7 +264,7 @@ MutableAudioProcessor::MutableAudioProcessor()
     // invalid, copyState().createXml() returned nullptr, and
     // getStateInformation saved 0 bytes (DAW sessions reopened at defaults).
     // The "State" tag must match the check in setStateInformation.
-    apvts_.state = juce::ValueTree (juce::Identifier ("State"));
+    apvts_.state = juce::ValueTree (juce::Identifier (PresetManager::kStateTag));
 
     // --- Create the 8-voice pool (message thread) ----------------------------
     //
@@ -649,9 +649,12 @@ void MutableAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
 
 void MutableAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
+    // applyState checks the "State" tag, resets every param to its default
+    // (so params missing from older sessions load at their defaults), then
+    // replaces the state.  Invalid data leaves the current state unchanged.
     auto xml = juce::XmlDocument::parse (juce::String::createStringFromData (data, sizeInBytes));
-    if (xml != nullptr && xml->getTagName() == "State")
-        apvts_.replaceState (juce::ValueTree::fromXml (*xml));
+    if (xml != nullptr)
+        presetManager_.applyState (*xml);
 }
 
 //==============================================================================
