@@ -79,12 +79,14 @@ Percent of one core = ms/s divided by 10 (past benchmark notes got this wrong by
   (60 Hz scope, trigger + zoom, Out/Aux overlay). Voices add pre-Mix Out/Aux into a
   processor-owned tap; processBlock applies outGain and pushes it.
   Source/EnvelopeView.{h,cpp}: ADSR curve from APVTS values (max stage times
-  duplicated from the param ranges; keep in sync).
+  duplicated from the param ranges; keep in sync) plus per-voice dots from
+  Source/VoiceDisplayState.h (atomics; voices infer their ADSR stage).
 - State: apvts_.state = ValueTree("State") must stay AFTER the last param is added.
 
 ## Roadmap
 Done: Phases 1-4 (tags v0.1-v0.4); 4a aux output, 4b tuning + LPG, 4c-1 mod matrix,
-4c-2 LFO, 4d unison, 4e plain functional UI, 4f presets.
-Next: Phase 5 visualizers (oscilloscope, envelope display), Phase 6 custom
+4c-2 LFO, 4d unison, 4e plain functional UI, 4f presets. Phase 5 visualizers
+(scope with trigger/zoom/Out+Aux, envelope display with voice dots).
+Next: Phase 6 custom
 graphics (film-strip/SVG knobs, custom look-and-feel), Phase 7 polish, signing,
 installers. Planned but not set up: GitHub Actions CI building on macOS and Windows.

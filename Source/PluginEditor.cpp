@@ -110,7 +110,7 @@ MutableAudioProcessorEditor::MutableAudioProcessorEditor (MutableAudioProcessor&
     : AudioProcessorEditor (&p),
       processorRef (p),
       scope_ (p.getScopeBuffer()),
-      envelope_ (p.getApvts())
+      envelope_ (p.getApvts(), p.getVoiceDisplayStates(), MutableAudioProcessor::kNumVoiceSlots)
 {
     using P = MutableAudioProcessor;
     auto& apvts = processorRef.getApvts();

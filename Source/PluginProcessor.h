@@ -66,6 +66,10 @@ public:
     /// Oscilloscope tap (Phase 5a).  Lock-free; the UI only reads it.
     const ScopeBuffer& getScopeBuffer() const noexcept { return scope_; }
 
+    /// Per-voice envelope positions (Phase 5e).  Lock-free; the UI only reads.
+    static constexpr int kNumVoiceSlots = 8;   // == kMaxVoices
+    const VoiceDisplayState* getVoiceDisplayStates() const noexcept { return voiceDisplay_; }
+
     //==========================================================================
     // Parameter IDs — stable strings, used for both the APVTS and state I/O.
     // Public so the editor can bind attachments without duplicating strings.
@@ -191,6 +195,10 @@ private:
     static constexpr int kScopeTapSize = 8192;
     juce::AudioBuffer<float> scopeTap_ { 2, kScopeTapSize };
     ScopeBuffer scope_;
+
+    // Phase 5e: one envelope-position slot per voice.
+    static_assert (kNumVoiceSlots == kMaxVoices);
+    VoiceDisplayState voiceDisplay_[kMaxVoices];
 
     //==========================================================================
     // Build a skewed NormalisableRange for a time parameter so the short end

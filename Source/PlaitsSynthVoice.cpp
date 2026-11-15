@@ -89,6 +89,9 @@ void PlaitsSynthVoice::startNote (int midiNoteNumber,
     // layer) and used as every layer's initial level.
     adsr_.noteOn();
     const float firstEnv = adsr_.getNextSample();
+    released_    = false;
+    peakReached_ = firstEnv >= 0.99999f;
+    lastAdsrValue_ = firstEnv;   // 5e: valid release start if noteOff precedes the first render
 
     // One LFO seed per note, shared by all layers, so S&H steps line up.
     ++lfoSeedCounter_;
@@ -127,6 +130,12 @@ void PlaitsSynthVoice::stopNote (float velocity, bool allowTailOff)
         // renderNextBlock detects the ADSR going idle, at which point
         // clearCurrentNote() is called.
         adsr_.noteOff();
+        if (! released_)   // a repeated noteOff keeps the first release point
+        {
+            heldStage (lastAdsrValue_, releaseFromStage_, releaseFromProgress_);
+            releaseStartLevel_ = lastAdsrValue_;
+        }
+        released_ = true;
     }
     else
     {
@@ -134,7 +143,50 @@ void PlaitsSynthVoice::stopNote (float velocity, bool allowTailOff)
         adsr_.reset();
         allLayersOff();
         clearCurrentNote();
+        publishIdle();
     }
+}
+
+//==============================================================================
+void PlaitsSynthVoice::heldStage (float lv, int& stage, float& progress) const noexcept
+{
+    const float s = params_.sustain;
+    if (! peakReached_)
+    {
+        stage = VoiceDisplayState::kAttack;
+        progress = std::clamp (lv, 0.0f, 1.0f);
+    }
+    else if (lv > s + 1.0e-4f && s < 1.0f)
+    {
+        stage = VoiceDisplayState::kDecay;
+        progress = std::clamp ((1.0f - lv) / (1.0f - s), 0.0f, 1.0f);
+    }
+    else
+    {
+        stage = VoiceDisplayState::kSustain;
+        progress = 0.0f;
+    }
+}
+
+void PlaitsSynthVoice::publishDisplay() noexcept
+{
+    if (display_ == nullptr)
+        return;
+
+    const float lv = lastAdsrValue_;
+
+    if (released_)
+    {
+        const float pr = releaseStartLevel_ > 0.0f ? 1.0f - lv / releaseStartLevel_ : 1.0f;
+        display_->publishRelease (lv, std::clamp (pr, 0.0f, 1.0f), releaseStartLevel_,
+                                  releaseFromStage_, releaseFromProgress_);
+        return;
+    }
+
+    int stage = VoiceDisplayState::kIdle;
+    float progress = 0.0f;
+    heldStage (lv, stage, progress);
+    display_->publish (stage, lv, progress);
 }
 
 //==============================================================================
@@ -182,6 +234,7 @@ void PlaitsSynthVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer,
     {
         allLayersOff();
         clearCurrentNote();
+        publishIdle();
         return;
     }
 
@@ -354,6 +407,8 @@ void PlaitsSynthVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer,
     {
         const float env  = adsr_.getNextSample();   // stateful — must run in order
         lastAdsrValue_ = env;   // capture for the NEXT block's mod matrix
+        if (env >= 0.99999f)
+            peakReached_ = true;   // 5e: attack -> decay
         const float g = env * voiceGain;
         accL[i] *= g;
         accR[i] *= g;
@@ -417,5 +472,10 @@ void PlaitsSynthVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer,
     {
         allLayersOff();
         clearCurrentNote();
+        publishIdle();
+    }
+    else
+    {
+        publishDisplay();
     }
 }

@@ -4,6 +4,7 @@
 
 #include <juce_audio_basics/juce_audio_basics.h>
 #include "PlaitsVoice.h"
+#include "VoiceDisplayState.h"
 
 //==============================================================================
 /// A juce::SynthesiserVoice that owns one PlaitsVoice and one juce::ADSR.
@@ -78,6 +79,13 @@ public:
     void setScopeTap (juce::AudioBuffer<float>* tap) noexcept
     {
         scopeTap_ = tap;
+    }
+
+    /// Phase 5e: processor-owned envelope position for the UI (may be null).
+    /// Message thread only (set once in the processor constructor).
+    void setDisplayState (VoiceDisplayState* state) noexcept
+    {
+        display_ = state;
     }
 
     //==========================================================================
@@ -277,6 +285,25 @@ private:
     juce::AudioBuffer<float> acc_;         // stereo, sum of all layers (L, R)
     juce::AudioBuffer<float> scopeAcc_;    // Phase 5c: pre-Mix Out (0) / Aux (1), mono sums
     juce::AudioBuffer<float>* scopeTap_ = nullptr;   // processor-owned, may be null
+
+    // Phase 5e: envelope stage tracking for the display.  juce::ADSR does not
+    // expose its state, so it is inferred: attack until the level reaches 1,
+    // decay until it reaches sustain, then sustain; release after a tail-off
+    // stopNote (linear from releaseStartLevel_ to 0, as juce::ADSR does).
+    VoiceDisplayState* display_ = nullptr;
+    bool  released_          = false;
+    bool  peakReached_       = false;
+    float releaseStartLevel_ = 0.0f;
+    int   releaseFromStage_    = VoiceDisplayState::kIdle;   // stage at note-off
+    float releaseFromProgress_ = 0.0f;                      // progress at note-off
+    /// Pre-release stage + progress from the current level (attack/decay/sustain).
+    void heldStage (float level, int& stage, float& progress) const noexcept;
+    void publishDisplay() noexcept;
+    void publishIdle() noexcept
+    {
+        if (display_ != nullptr)
+            display_->publish (VoiceDisplayState::kIdle, 0.0f, 0.0f);
+    }
 
     // Previous per-block mix / auxLevel, used to ramp linearly across each
     // block (start = previous value, end = current value) so parameter changes

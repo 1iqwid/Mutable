@@ -292,6 +292,7 @@ MutableAudioProcessor::MutableAudioProcessor()
         voice->setIndex (i);
         voice->setActiveVoiceCount (&activeVoiceCount_);
         voice->setScopeTap (&scopeTap_);
+        voice->setDisplayState (&voiceDisplay_[i]);
         synth_.addVoice (voice);
     }
 }

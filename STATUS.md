@@ -5,7 +5,8 @@ Last updated: 2026-11-15
 ## Current state
 
 Phases 1-4 complete (tags v0.1-v0.4).
-Phase 5 (visualizers) in progress: 5a-5d done. Next: 5e per-voice envelope dots.
+Phase 5 (visualizers) complete: 5a-5e done (not yet tagged).
+Next: Phase 6 (custom graphics).
 
 ## Build
 
@@ -255,6 +256,19 @@ Done: 4a, 4b, 4c-1, 4c-2, 4d, 4e, 4f. All 24 engines are selectable via the `eng
   by sqrt(t / max). Max times (5 / 5 / 10 s) are duplicated from the param ranges
   in EnvelopeView.cpp; keep them in sync.
 - Bottom row: scope (flexible, left) | envelope (360 px, right).
+- Verified in Ableton by Manny.
+
+### Task 5e - Per-voice envelope dots (DONE, 2026-11-15)
+- Source/VoiceDisplayState.h: per-voice relaxed atomics (stage, level, progress,
+  release start level, stage/progress at note-off). Processor owns 8; each voice
+  publishes at the end of renderNextBlock and publishes idle when it stops.
+- juce::ADSR does not expose its stage, so PlaitsSynthVoice infers it: attack until
+  level reaches 1, decay until sustain, then sustain; release after a tail-off
+  stopNote (first note-off point kept).
+- EnvelopeView (now 60 Hz; repaints only while voices sound or params change):
+  dot x = stage start + progress, y = actual level; sustain dots sit mid-hold.
+  Early release (from attack/decay): faint lead-in at the release level from the
+  let-go point to the release start, plus a faint ghost release line to 0.
 - Verified in Ableton by Manny.
 
 ## Phase 6 - Custom graphics
