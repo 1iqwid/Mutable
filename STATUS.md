@@ -4,8 +4,8 @@ Last updated: 2026-11-14
 
 ## Current state
 
-Phases 1-3 complete (tags v0.1-v0.3). Phase 4 in progress: 4a, 4b, 4c-1, 4c-2 done.
-Next task: 4d (unison/detune).
+Phases 1-3 complete (tags v0.1-v0.3). Phase 4 in progress: 4a, 4b, 4c-1, 4c-2, 4d done.
+Next task: 4e (plain functional JUCE UI).
 
 ## Build
 
@@ -105,7 +105,7 @@ cmake --build build --config Release --target MutableBench
 
 ## Phase 4 - Full parameters and placeholder UI (IN PROGRESS)
 
-Done: 4a, 4b, 4c-1, 4c-2. Remaining: 4d unison/detune, 4e functional UI,
+Done: 4a, 4b, 4c-1, 4c-2, 4d. Remaining: 4e functional UI,
 4f presets. All 24 engines are selectable via the `engine` param (0..23, default 8).
 
 ### Task 4a - Aux output, Mix and Aux Level (DONE)
@@ -162,8 +162,23 @@ Done: 4a, 4b, 4c-1, 4c-2. Remaining: 4d unison/detune, 4e functional UI,
 - Verified in Ableton: amount 0 = no change, sine timbre, S&H steps, pitch vibrato,
   phase restart per note. Large-buffer smoothness NOT yet tested (see Known issues).
 
+### Task 4d - Unison, detune, stereo spread (DONE, 2026-11-14)
+- Params (appended): unison (int 1..4, default 1), detune (0..50 cents for the
+  outer layers, default 10), spread (0..1, default 0.5).
+- Each PlaitsSynthVoice owns kMaxUnison (4) PlaitsVoice layers, all prepared in
+  prepare(). Layer count is latched at startNote; detune and spread are live.
+  Layer position pos is evenly spaced in -1..+1: pitch offset += pos * detune,
+  pan = pos * spread (balance law: centre = 1/1). Sum scaled by 1/sqrt(layers).
+- Output is now stereo (ch0 = L, ch1 = R; mono or extra channels get the average).
+  Unison 1 is identical to the pre-4d output.
+- ADSR advances once per sample (not per layer). All layers share one LFO seed
+  per note (PlaitsVoice::resetLfo), so S&H steps line up.
+- Detune 0 with unison > 1: layers are phase-coherent, about +6 dB vs unison 1.
+- Verified in Ableton: unison 1 unchanged, detune/spread, live detune changes,
+  unison latched per note, bend and LFO across layers, 8-note chord on a heavy
+  engine without dropouts.
+
 ### Remaining Phase 4 tasks
-- 4d: unison and detune (optional).
 - 4e: plain functional JUCE UI bound to all params (engine as selector, 24 engines;
   per-engine labels for harmonics/timbre/morph).
 - 4f: basic preset save and load.

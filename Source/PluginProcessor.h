@@ -98,6 +98,10 @@ private:
     static const juce::String paramModLfoTimbre;
     static const juce::String paramModLfoMorph;
     static const juce::String paramModLfoPitch;
+    // ---- Task 4d: unison ------------------------------------------------------
+    static const juce::String paramUnison;
+    static const juce::String paramDetune;
+    static const juce::String paramSpread;
 
     //==========================================================================
     // Maximum number of voices — a compile-time constant (Phase 3d).  All
@@ -154,6 +158,10 @@ private:
     juce::RangedAudioParameter* pModLfoTimbre      = nullptr;
     juce::RangedAudioParameter* pModLfoMorph       = nullptr;
     juce::RangedAudioParameter* pModLfoPitch       = nullptr;
+    // ---- Task 4d: unison ------------------------------------------------------
+    juce::RangedAudioParameter* pUnison            = nullptr;
+    juce::RangedAudioParameter* pDetune            = nullptr;
+    juce::RangedAudioParameter* pSpread            = nullptr;
 
     //==========================================================================
     // Shared active-voice count (Phase 3d).  Owned by the processor; every

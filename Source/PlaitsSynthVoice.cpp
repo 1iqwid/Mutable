@@ -13,7 +13,8 @@ PlaitsSynthVoice::PlaitsSynthVoice()
     // Enable external-level mode so the ADSR drives Plaits' accent.
     // When useExternalLevel_ is true, Plaits' LPG uses Process (no
     // built-in decay), so our ADSR is the sole envelope source.
-    plaitsVoice_.setUseExternalLevel (true);
+    for (auto& layer : layers_)
+        layer.setUseExternalLevel (true);
 }
 
 PlaitsSynthVoice::~PlaitsSynthVoice() = default;
@@ -21,7 +22,10 @@ PlaitsSynthVoice::~PlaitsSynthVoice() = default;
 //==============================================================================
 void PlaitsSynthVoice::prepare (double hostSampleRate)
 {
-    plaitsVoice_.prepare (hostSampleRate);
+    // All kMaxUnison layers are prepared (allocated) here, on the message
+    // thread, so changing the unison count never allocates on the audio path.
+    for (auto& layer : layers_)
+        layer.prepare (hostSampleRate);
     adsr_.setSampleRate (hostSampleRate);
     adsr_.setParameters (makeAdsrParams());
     adsr_.reset();
@@ -72,24 +76,44 @@ void PlaitsSynthVoice::startNote (int midiNoteNumber,
     //
     // We only STORE the bend here.  renderNextBlock() is the single source of
     // truth for the total pitch offset (bend + coarse + fine) and the ONLY call
-    // site of plaitsVoice_.setPitchOffset(), so this path and the per-block path
+    // site of setPitchOffset() (per layer), so this path and the per-block path
     // can never disagree.
     bendSemis_ = wheelValueToSemitones (currentPitchWheelPosition,
                                         params_.bendRange);
 
-    // Push per-block parameters into the PlaitsVoice before rendering.
-    plaitsVoice_.setEngine (params_.engine);
-    plaitsVoice_.setParams (params_.harmonics, params_.timbre, params_.morph);
+    // Unison (Task 4d): latch the layer count for this note.  Changing the
+    // unison param while a note is held takes effect on the next note.
+    activeLayers_ = std::clamp (params_.unison, 1, kMaxUnison);
 
-    // Start the ADSR envelope.
+    // Start the ADSR envelope.  The first sample is consumed once (not once per
+    // layer) and used as every layer's initial level.
     adsr_.noteOn();
+    const float firstEnv = adsr_.getNextSample();
 
-    // Trigger the Plaits engine (sets noteOn_ and possibly retrigger_).
-    plaitsVoice_.noteOn (midiNoteNumber, velocity);
+    // One LFO seed per note, shared by all layers, so S&H steps line up.
+    ++lfoSeedCounter_;
+    const uint32_t lfoSeed = lfoSeedCounter_ * 2654435761u + 1u;
 
-    // Set the initial level to the first ADSR sample value.
-    // (The actual per-sample envelope is applied in renderNextBlock.)
-    plaitsVoice_.setLevel (adsr_.getNextSample());
+    for (int k = 0; k < kMaxUnison; ++k)
+    {
+        auto& layer = layers_[k];
+        if (k >= activeLayers_)
+        {
+            layer.noteOff();   // unused by this note: never rendered
+            continue;
+        }
+
+        // Push per-block parameters into the layer before rendering.
+        layer.setEngine (params_.engine);
+        layer.setParams (params_.harmonics, params_.timbre, params_.morph);
+
+        // Trigger the Plaits engine (sets noteOn_ and possibly retrigger_).
+        layer.noteOn (midiNoteNumber, velocity);
+        layer.resetLfo (lfoSeed);
+
+        // Initial level (the per-sample envelope is applied in renderNextBlock).
+        layer.setLevel (firstEnv);
+    }
 }
 
 //==============================================================================
@@ -108,7 +132,7 @@ void PlaitsSynthVoice::stopNote (float velocity, bool allowTailOff)
     {
         // Immediate stop: reset ADSR and clear the note immediately.
         adsr_.reset();
-        plaitsVoice_.noteOff();
+        allLayersOff();
         clearCurrentNote();
     }
 }
@@ -156,7 +180,7 @@ void PlaitsSynthVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer,
     // release this voice back to the synthesiser.
     if (! adsr_.isActive())
     {
-        plaitsVoice_.noteOff();
+        allLayersOff();
         clearCurrentNote();
         return;
     }
@@ -210,31 +234,19 @@ void PlaitsSynthVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer,
     const float effMorph     =
         std::clamp (params_.morph     + morphMod,  0.0f, 1.0f);
 
-    // Push the effective harmonics / timbre / morph into the PlaitsVoice.
-    plaitsVoice_.setEngine (params_.engine);
-    plaitsVoice_.setParams (effHarmonics, effTimbre, effMorph);
-
     // ---- Pitch (single source of truth) ------------------------------------
     //
     // Total semitone offset = live bend (bendSemis_) + coarse + fine/100
-    //                        + modPitch (12 · mod-matrix pitch contribution).
-    // Computed HERE and applied via the ONLY setPitchOffset() call site.
-    // The modPitch term is added to the existing total, so the single-source-
-    // of-truth rule is preserved: every path that affects pitch flows through
-    // this one setPitchOffset() call.
+    //                        + modPitch (12 · mod-matrix pitch contribution)
+    //                        + per-layer unison detune (added in the layer loop).
+    // Computed HERE and applied via the ONLY setPitchOffset() call site (the
+    // layer loop below), so every path that affects pitch flows through it.
     //
     // PlaitsVoice::render() ramps the pitch offset linearly across the 24-
     // sample chunks (zipper-noise avoidance) and snaps on note start
     // (PlaitsVoice::noteOn → snapToParams()).
-    plaitsVoice_.setPitchOffset (
-        bendSemis_ + params_.coarse + params_.fine * 0.01f + pitchModSemitones);
-
-    // ---- LPG colour / decay (Task 4b) ---------------------------------------
-    //
-    // Pushed into the Plaits Patch each block so changing the knobs affects
-    // sounding notes (including release) immediately.  Defaults lpgColour 0.5,
-    // lpgDecay 0.5.
-    plaitsVoice_.setLpg (params_.lpgColour, params_.lpgDecay);
+    const float basePitch =
+        bendSemis_ + params_.coarse + params_.fine * 0.01f + pitchModSemitones;
 
     // ---- Render both outputs, apply ADSR + voice gain, blend Out/Aux -------
     //
@@ -259,44 +271,91 @@ void PlaitsSynthVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer,
 
     float* outBuf  = scratch_.getWritePointer (0);
     float* auxBuf  = scratchAux_.getWritePointer (0);
+    float* accL    = acc_.getWritePointer (0);
+    float* accR    = acc_.getWritePointer (1);
+    juce::FloatVectorOperations::clear (accL, numSamples);
+    juce::FloatVectorOperations::clear (accR, numSamples);
 
-    // Render the Plaits voice into our PRIVATE scratch buffers (NOT the shared
-    // output buffer).  PlaitsVoice::render() overwrites its targets, which is
-    // fine because these are voice-private.
-    // LFO (Task 4c-2b): push shape / rate and the four bipolar mod amounts.
-    // The pitch amount is scaled by 12.0f (semitones per unit LFO value),
-    // exactly like modEnvPitch (12.0f * (env*amtEnv + ...)) in the mod matrix.
-    plaitsVoice_.setLfo (
-        params_.lfoShape,
-        params_.lfoRate,
-        params_.modLfoHarmonics,
-        params_.modLfoTimbre,
-        params_.modLfoMorph,
-        12.0f * params_.modLfoPitch);
-    plaitsVoice_.render (outBuf, auxBuf, numSamples);
-
-    // Ramp mix / auxLevel linearly across this block (start = previous block's
-    // value, end = current value), apply the ADSR sample-by-sample, apply the
-    // per-voice gain, and blend the two channels.
+    // Mix / auxLevel are ramped linearly across this block (start = previous
+    // block's value, end = current value).
     const float invNum  = (numSamples > 0) ? (1.0f / static_cast<float> (numSamples)) : 0.0f;
     const float mixDelta  = params_.mix      - prevMix;
     const float auxDelta  = params_.auxLevel - prevAuxLevel;
 
+    // ---- Unison layers (Task 4d) -------------------------------------------
+    //
+    // Each active layer gets the same params plus its own detune (pos · detune
+    // cents) and pan (pos · spread), where pos is evenly spaced in -1..+1.
+    // Each layer renders into the per-layer scratch, is blended Out/Aux, and is
+    // ADDED into the stereo accumulator with balance-law pan gains (centre =
+    // 1/1, so unison 1 is identical to the pre-4d mono output).
+    const int   numLayers = activeLayers_;
+    const float detuneSemis = params_.detune * 0.01f;
+    const float spread = std::clamp (params_.spread, 0.0f, 1.0f);
+
+    for (int k = 0; k < numLayers; ++k)
+    {
+        auto& layer = layers_[k];
+        const float pos = layerPosition (k, numLayers);
+
+        layer.setEngine (params_.engine);
+        layer.setParams (effHarmonics, effTimbre, effMorph);
+        layer.setPitchOffset (basePitch + pos * detuneSemis);
+
+        // LPG colour / decay (Task 4b): pushed each block so the knobs affect
+        // sounding notes (including release) immediately.
+        layer.setLpg (params_.lpgColour, params_.lpgDecay);
+
+        // LFO (Task 4c-2b): the pitch amount is scaled by 12.0f (semitones per
+        // unit LFO value), exactly like modEnvPitch in the mod matrix.
+        layer.setLfo (params_.lfoShape,
+                      params_.lfoRate,
+                      params_.modLfoHarmonics,
+                      params_.modLfoTimbre,
+                      params_.modLfoMorph,
+                      12.0f * params_.modLfoPitch);
+
+        // Render into the voice-private scratch (overwritten by render()).
+        layer.render (outBuf, auxBuf, numSamples);
+
+        const float p  = spread * pos;                  // -1 (L) .. +1 (R)
+        const float gL = (p > 0.0f) ? 1.0f - p : 1.0f;
+        const float gR = (p < 0.0f) ? 1.0f + p : 1.0f;
+
+        for (int i = 0; i < numSamples; ++i)
+        {
+            const float t = static_cast<float> (i) * invNum;   // 0 at the first sample
+            const float mix = prevMix + mixDelta * t;
+            const float auxLvl = prevAuxLevel + auxDelta * t;
+
+            const float blended =
+                outBuf[i] * (1.0f - mix) + auxBuf[i] * auxLvl * mix;
+
+            accL[i] += blended * gL;
+            accR[i] += blended * gR;
+        }
+    }
+
+    // Apply the ADSR sample-by-sample (once per sample, NOT per layer), the
+    // per-voice gain, and 1/sqrt(layers) loudness compensation (1.0 for 1 layer).
+    static constexpr float kLayerNorm[kMaxUnison + 1] =
+        { 1.0f, 1.0f, 0.70710678f, 0.57735027f, 0.5f };
+    const float voiceGain = kVoiceGain * kLayerNorm[numLayers];
+
     for (int i = 0; i < numSamples; ++i)
     {
         const float env  = adsr_.getNextSample();   // stateful — must run in order
-        plaitsVoice_.setLevel (env);
         lastAdsrValue_ = env;   // capture for the NEXT block's mod matrix
-
-        const float t = static_cast<float> (i) * invNum;   // 0 at the first sample
-        const float mix = prevMix + mixDelta * t;
-        const float auxLvl = prevAuxLevel + auxDelta * t;
-
-        const float blended =
-            outBuf[i] * (1.0f - mix) + auxBuf[i] * auxLvl * mix;
-
-        outBuf[i] = blended * env * kVoiceGain;
+        const float g = env * voiceGain;
+        accL[i] *= g;
+        accR[i] *= g;
     }
+
+    // setLevel() only stores a value read once per render() call, so setting
+    // it to the block's last envelope value is equivalent to the old
+    // per-sample call.
+    for (int k = 0; k < numLayers; ++k)
+        layers_[k].setLevel (lastAdsrValue_);
 
     // Finish the ramp: the next block starts from this block's end values.
     prevMix      = params_.mix;
@@ -312,17 +371,22 @@ void PlaitsSynthVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer,
     // write — no allocation, no lock, no file I/O.
     envSource_ = lastAdsrValue_;
 
-    // Accumulate (ADD) our mono result into EVERY channel of the shared
-    // output buffer.  ADD is required: Synthesiser::renderVoices() hands the
-    // same already-cleared buffer to each voice and expects them to sum, so
-    // that all active voices contribute (polyphony).  Copying channel 0 into
-    // the others happens here, as before.
+    // Accumulate (ADD) into the shared output buffer.  ADD is required:
+    // Synthesiser::renderVoices() hands the same already-cleared buffer to each
+    // voice and expects them to sum (polyphony).  Channel 0 = L, channel 1 = R;
+    // a mono bus or any extra channels get the L/R average.
     for (int ch = 0; ch < numChannels; ++ch)
     {
-        juce::FloatVectorOperations::add (
-            outputBuffer.getWritePointer (ch) + startSample,
-            outBuf,
-            numSamples);
+        float* dest = outputBuffer.getWritePointer (ch) + startSample;
+        if (numChannels >= 2 && ch == 0)
+            juce::FloatVectorOperations::add (dest, accL, numSamples);
+        else if (numChannels >= 2 && ch == 1)
+            juce::FloatVectorOperations::add (dest, accR, numSamples);
+        else
+        {
+            juce::FloatVectorOperations::addWithMultiply (dest, accL, 0.5f, numSamples);
+            juce::FloatVectorOperations::addWithMultiply (dest, accR, 0.5f, numSamples);
+        }
     }
 
     // After rendering, check if the ADSR has just gone idle (release
@@ -330,7 +394,7 @@ void PlaitsSynthVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer,
     // release this voice.
     if (! adsr_.isActive())
     {
-        plaitsVoice_.noteOff();
+        allLayersOff();
         clearCurrentNote();
     }
 }

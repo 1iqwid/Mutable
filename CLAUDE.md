@@ -60,20 +60,22 @@ Percent of one core = ms/s divided by 10 (past benchmark notes got this wrong by
   call's values (prev*_) to current targets; ramp fraction capped at 1.0; snapToParams()
   on noteOn. Pitch has a single source of truth: renderNextBlock() in PlaitsSynthVoice.
 - Source/PlaitsSynthVoice.{h,cpp}: juce::SynthesiserVoice with ADSR (external level
-  mode) and a per-block Parameters snapshot. Voices accumulate into the output.
+  mode), a per-block Parameters snapshot, and up to 4 unison PlaitsVoice layers
+  (detune + stereo spread). Voices accumulate into the stereo output.
 - Source/PluginProcessor.{h,cpp}: APVTS with stable string IDs, 8 voices, selectable
   count, MIDI (pitch bend with bendRange, mod wheel, sustain via JUCE Synthesiser).
   Params so far: engine (0..23), harmonics, timbre, morph, outGain, attack/decay/
   sustain/release, bendRange, voices, mix, auxLevel, coarse, fine, lpgColour, lpgDecay,
   12 mod params (modEnv/modVel/modWheel x Harmonics/Timbre/Morph/Pitch; modWheelTimbre
-  defaults 0.5), and lfoShape, lfoRate, modLfoHarmonics/Timbre/Morph/Pitch.
+  defaults 0.5), lfoShape, lfoRate, modLfoHarmonics/Timbre/Morph/Pitch, and unison (1..4),
+  detune, spread.
   Append new params; don't reorder existing ones.
 - Source/Lfo.h: header-only LFO (6 shapes, xorshift32 S&H, bipolar -1..+1).
 
 ## Roadmap
 Done: Phases 1-3 (tags v0.1-v0.3); 4a aux output, 4b tuning + LPG, 4c-1 mod matrix,
-4c-2 LFO.
-Next: 4d unison/detune, 4e plain functional JUCE UI bound to all
+4c-2 LFO, 4d unison.
+Next: 4e plain functional JUCE UI bound to all
 params (engine selector with all 24 engines, per-engine parameter labels), 4f preset
 save/load. Then Phase 5 visualizers (oscilloscope, envelope display), Phase 6 custom
 graphics (film-strip/SVG knobs, custom look-and-feel), Phase 7 polish, signing,

@@ -126,7 +126,19 @@ public:
         float modLfoTimbre     = 0.0f;
         float modLfoMorph      = 0.0f;
         float modLfoPitch      = 0.0f;
+        // ---- Task 4d: unison ------------------------------------------------
+        // unison: number of stacked PlaitsVoice layers (1..kMaxUnison), latched
+        // at note start.  detune: cents offset of the OUTER layers (inner layers
+        // spaced evenly between -detune and +detune).  spread: 0..1 stereo
+        // width (0 = all layers centred).  unison = 1 is identical to pre-4d.
+        int   unison = 1;
+        float detune = 10.0f;     // cents, 0..50
+        float spread = 0.5f;      // 0..1
     };
+
+    /// Maximum unison layers per voice (Task 4d).  8 voices x 4 layers = 32
+    /// PlaitsVoice instances, all allocated in prepare().
+    static constexpr int kMaxUnison = 4;
 
     /// Called from the processor's processBlock (AUDIO THREAD) immediately
     /// before each renderNextBlock, with the latest parameter snapshot.
@@ -164,7 +176,7 @@ public:
     }
 
     //==========================================================================
-    PlaitsVoice& getPlaitsVoice() noexcept  { return plaitsVoice_; }
+    PlaitsVoice& getPlaitsVoice() noexcept  { return layers_[0]; }
 
 private:
     //==========================================================================
@@ -213,6 +225,24 @@ private:
             scratch_.setSize (1, numSamples);
         if (scratchAux_.getNumSamples() < numSamples)
             scratchAux_.setSize (1, numSamples);
+        if (acc_.getNumSamples() < numSamples)
+            acc_.setSize (2, numSamples);
+    }
+
+    /// Unison layer position in -1..+1 (outer layers at the ends, evenly
+    /// spaced); 0 when there is only one layer.  Used for detune and pan.
+    static float layerPosition (int layer, int numLayers) noexcept
+    {
+        if (numLayers <= 1)
+            return 0.0f;
+        return 2.0f * static_cast<float> (layer) / static_cast<float> (numLayers - 1) - 1.0f;
+    }
+
+    /// noteOff on every layer (including ones unused by the current note).
+    void allLayersOff() noexcept
+    {
+        for (auto& layer : layers_)
+            layer.noteOff();
     }
 
     //==========================================================================
@@ -224,11 +254,16 @@ private:
     static constexpr float kVoiceGain = 0.35f;
 
     //==========================================================================
-    PlaitsVoice         plaitsVoice_;
+    // Unison layers (Task 4d).  Only the first activeLayers_ are triggered and
+    // rendered; activeLayers_ is latched from params_.unison in startNote().
+    PlaitsVoice         layers_[kMaxUnison];
+    int                 activeLayers_ = 1;
+    uint32_t            lfoSeedCounter_ = 0;   // shared per-note LFO seed source
     juce::ADSR          adsr_;
     Parameters          params_;
-    juce::AudioBuffer<float> scratch_;     // mono, voice-private render scratch (Out)
-    juce::AudioBuffer<float> scratchAux_;  // mono, voice-private render scratch (Aux)
+    juce::AudioBuffer<float> scratch_;     // mono, per-layer render scratch (Out)
+    juce::AudioBuffer<float> scratchAux_;  // mono, per-layer render scratch (Aux)
+    juce::AudioBuffer<float> acc_;         // stereo, sum of all layers (L, R)
 
     // Previous per-block mix / auxLevel, used to ramp linearly across each
     // block (start = previous value, end = current value) so parameter changes
@@ -261,7 +296,7 @@ private:
 
     // Pitch bend in SEMITONES — the single source of truth for the live bend.
     // Written ONLY by pitchWheelMoved() and startNote() (message thread).
-    // renderNextBlock() is the ONLY place that calls plaitsVoice_.setPitchOffset(),
+    // renderNextBlock() is the ONLY place that calls setPitchOffset() (per layer),
     // using total = bendSemis_ + params_.coarse + params_.fine / 100.0f.
     // Centred wheel (bendSemis_ = 0) with coarse = 0, fine = 0 → total = 0 →
     // the MIDI note is passed to Plaits unmodified → exactly in tune.

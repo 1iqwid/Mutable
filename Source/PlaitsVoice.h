@@ -139,6 +139,10 @@ public:
         lfoAmtP_ = amtPitchSemis;
     }
 
+    /// Re-seed the LFO (phase 0).  Called after noteOn() by PlaitsSynthVoice so
+    /// all unison layers of one note share the same S&H sequence (Task 4d).
+    void resetLfo (uint32_t seed) noexcept { lfo_.reset (seed); }
+
     /// Renders numSamples of float audio at the host sample rate.
     /// out and aux must each point to at least numSamples floats.
     /// aux may be nullptr if you don't need the aux channel.

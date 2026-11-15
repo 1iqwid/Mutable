@@ -39,6 +39,9 @@ const juce::String MutableAudioProcessor::paramModLfoHarmonics   ("modLfoHarmoni
 const juce::String MutableAudioProcessor::paramModLfoTimbre      ("modLfoTimbre");
 const juce::String MutableAudioProcessor::paramModLfoMorph       ("modLfoMorph");
 const juce::String MutableAudioProcessor::paramModLfoPitch       ("modLfoPitch");
+const juce::String MutableAudioProcessor::paramUnison            ("unison");
+const juce::String MutableAudioProcessor::paramDetune            ("detune");
+const juce::String MutableAudioProcessor::paramSpread            ("spread");
 
 //==============================================================================
 MutableAudioProcessor::MutableAudioProcessor()
@@ -236,6 +239,22 @@ MutableAudioProcessor::MutableAudioProcessor()
         std::make_unique<juce::AudioParameterFloat>(
             paramModLfoPitch,       "LFO -> Pitch",      bipolar, 0.0f));
 
+    // --- Unison (Task 4d) ------------------------------------------------------
+    // unison: layers per note (1..PlaitsSynthVoice::kMaxUnison, default 1 = off;
+    // latched at note start).  detune: cents offset of the outer layers.
+    // spread: stereo width of the layers (0 = mono).
+    pUnison = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterInt>(
+            paramUnison, "Unison", 1, PlaitsSynthVoice::kMaxUnison, 1));
+    pDetune = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramDetune, "Unison Detune",
+            juce::NormalisableRange<float>(0.0f, 50.0f), 10.0f));
+    pSpread = apvts_.createAndAddParameter (
+        std::make_unique<juce::AudioParameterFloat>(
+            paramSpread, "Unison Spread",
+            juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
+
     // --- Create the 8-voice pool (message thread) ----------------------------
     //
     // A minimal SynthesiserSound that applies to all notes and channels.
@@ -410,6 +429,14 @@ void MutableAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const float modLfoPitch       = (pModLfoPitch       != nullptr)
                                      ? static_cast<juce::AudioParameterFloat*>(pModLfoPitch)->get()       : 0.0f;
 
+    // ---- Unison (Task 4d) ----------------------------------------------------
+    const int   unison            = (pUnison            != nullptr)
+                                     ? static_cast<juce::AudioParameterInt*>(pUnison)->get()              : 1;
+    const float detune            = (pDetune            != nullptr)
+                                     ? static_cast<juce::AudioParameterFloat*>(pDetune)->get()            : 10.0f;
+    const float spread            = (pSpread            != nullptr)
+                                     ? static_cast<juce::AudioParameterFloat*>(pSpread)->get()            : 0.5f;
+
     // ---- Take a snapshot and give it to every voice -------------------------
     //
     // The snapshot is a plain struct written on the audio thread immediately
@@ -449,6 +476,9 @@ void MutableAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     voiceParams.modLfoTimbre      = modLfoTimbre;
     voiceParams.modLfoMorph       = modLfoMorph;
     voiceParams.modLfoPitch       = modLfoPitch;
+    voiceParams.unison            = unison;
+    voiceParams.detune            = detune;
+    voiceParams.spread            = spread;
 
     for (int i = 0; i < synth_.getNumVoices(); ++i)
     {
