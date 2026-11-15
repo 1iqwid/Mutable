@@ -5,7 +5,7 @@ Last updated: 2026-11-15
 ## Current state
 
 Phases 1-4 complete (tags v0.1-v0.4).
-Phase 5 (visualizers) in progress: 5a-5c done. Next: 5d envelope curve.
+Phase 5 (visualizers) in progress: 5a-5d done. Next: 5e per-voice envelope dots.
 
 ## Build
 
@@ -246,6 +246,15 @@ Done: 4a, 4b, 4c-1, 4c-2, 4d, 4e, 4f. All 24 engines are selectable via the `eng
   Blocks > 8192 samples are not shown.
 - ScopeView overlays Out (green) and Aux (amber) with a legend; one trigger point
   (Out, else Aux) for both so relative phase is kept.
+- Verified in Ableton by Manny.
+
+### Task 5d - Envelope display (DONE, 2026-11-15)
+- Source/EnvelopeView.{h,cpp}: draws the ADSR from APVTS raw values (UI thread,
+  30 Hz poll, repaints only on change). Linear segments (juce::ADSR is linear).
+- Time axis: width shares A 25 %, D 25 %, S hold 20 %, R 30 %, each stage scaled
+  by sqrt(t / max). Max times (5 / 5 / 10 s) are duplicated from the param ranges
+  in EnvelopeView.cpp; keep them in sync.
+- Bottom row: scope (flexible, left) | envelope (360 px, right).
 - Verified in Ableton by Manny.
 
 ## Phase 6 - Custom graphics

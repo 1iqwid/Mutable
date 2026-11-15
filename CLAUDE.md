@@ -78,6 +78,8 @@ Percent of one core = ms/s divided by 10 (past benchmark notes got this wrong by
 - Source/ScopeBuffer.h (lock-free SPSC ring, audio -> UI) and Source/ScopeView.{h,cpp}
   (60 Hz scope, trigger + zoom, Out/Aux overlay). Voices add pre-Mix Out/Aux into a
   processor-owned tap; processBlock applies outGain and pushes it.
+  Source/EnvelopeView.{h,cpp}: ADSR curve from APVTS values (max stage times
+  duplicated from the param ranges; keep in sync).
 - State: apvts_.state = ValueTree("State") must stay AFTER the last param is added.
 
 ## Roadmap

@@ -109,7 +109,8 @@ void MutableAudioProcessorEditor::Choice::resized()
 MutableAudioProcessorEditor::MutableAudioProcessorEditor (MutableAudioProcessor& p)
     : AudioProcessorEditor (&p),
       processorRef (p),
-      scope_ (p.getScopeBuffer())
+      scope_ (p.getScopeBuffer()),
+      envelope_ (p.getApvts())
 {
     using P = MutableAudioProcessor;
     auto& apvts = processorRef.getApvts();
@@ -202,6 +203,7 @@ MutableAudioProcessorEditor::MutableAudioProcessorEditor (MutableAudioProcessor&
                      + kVisH + kGap;
 
     addAndMakeVisible (scope_);
+    addAndMakeVisible (envelope_);
     setupScopeControls();
     setupPresetBar();
     setSize (width, height);
@@ -369,12 +371,16 @@ void MutableAudioProcessorEditor::paint (juce::Graphics& g)
                     juce::Justification::centredLeft);
     }
 
-    g.setColour (kSectionFill);
-    g.fillRoundedRectangle (scopeSection_.toFloat(), 6.0f);
-    g.setColour (juce::Colours::white);
-    g.setFont (juce::Font (juce::FontOptions (14.0f, juce::Font::bold)));
-    g.drawText ("Oscilloscope", scopeSection_.withHeight (kTitleH).reduced (kPad, 0),
-                juce::Justification::centredLeft);
+    for (const auto& [rect, title] : { std::pair { scopeSection_, "Oscilloscope" },
+                                       std::pair { envSection_,   "Envelope" } })
+    {
+        g.setColour (kSectionFill);
+        g.fillRoundedRectangle (rect.toFloat(), 6.0f);
+        g.setColour (juce::Colours::white);
+        g.setFont (juce::Font (juce::FontOptions (14.0f, juce::Font::bold)));
+        g.drawText (title, rect.withHeight (kTitleH).reduced (kPad, 0),
+                    juce::Justification::centredLeft);
+    }
 }
 
 void MutableAudioProcessorEditor::resized()
@@ -412,8 +418,12 @@ void MutableAudioProcessorEditor::resized()
         y += kTitleH + kKnobH + kPad + kGap;
     }
 
-    // Visualizer row: full-width scope for now (envelope display joins in 5d).
-    scopeSection_ = { kGap, y, getWidth() - 2 * kGap, kVisH };
+    // Visualizer row: scope (left, flexible) | envelope (right, fixed width).
+    constexpr int kEnvW = 360;
+    envSection_   = { getWidth() - kGap - kEnvW, y, kEnvW, kVisH };
+    scopeSection_ = { kGap, y, envSection_.getX() - 2 * kGap, kVisH };
+    envelope_.setBounds (envSection_.withTrimmedTop (kTitleH).reduced (kPad, 0)
+                                    .withTrimmedBottom (kPad));
     scope_.setBounds (scopeSection_.withTrimmedTop (kTitleH).reduced (kPad, 0)
                                    .withTrimmedBottom (kPad));
 

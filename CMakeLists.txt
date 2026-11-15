@@ -204,7 +204,9 @@ target_sources(Mutable
         Source/EngineInfo.h
         Source/ScopeBuffer.h
         Source/ScopeView.h
-        Source/ScopeView.cpp)
+        Source/ScopeView.cpp
+        Source/EnvelopeView.h
+        Source/EnvelopeView.cpp)
 
 # Not using web views or curl yet (matches the JUCE CMake example defaults).
 target_compile_definitions(Mutable

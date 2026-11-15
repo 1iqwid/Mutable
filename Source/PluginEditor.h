@@ -5,6 +5,7 @@
 
 #include "PluginProcessor.h"
 #include "ScopeView.h"
+#include "EnvelopeView.h"
 
 //==============================================================================
 /// Phase 4e: plain functional editor.  Stock JUCE components only, bound to the
@@ -102,6 +103,9 @@ private:
     juce::Slider scopeZoom_;            // view setting (ms), not a parameter
     juce::ToggleButton scopeTrigger_ { "Trigger" };
     void setupScopeControls();
+
+    EnvelopeView envelope_;
+    juce::Rectangle<int> envSection_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MutableAudioProcessorEditor)
 };
