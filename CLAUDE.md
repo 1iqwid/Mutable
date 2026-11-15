@@ -71,12 +71,13 @@ Percent of one core = ms/s divided by 10 (past benchmark notes got this wrong by
   detune, spread.
   Append new params; don't reorder existing ones.
 - Source/Lfo.h: header-only LFO (6 shapes, xorshift32 S&H, bipolar -1..+1).
+- Source/PluginEditor.{h,cpp}: plain JUCE editor, APVTS attachments only.
+  Source/EngineInfo.h: engine names + per-engine Harmonics/Timbre/Morph captions.
+- State: apvts_.state = ValueTree("State") must stay AFTER the last param is added.
 
 ## Roadmap
 Done: Phases 1-3 (tags v0.1-v0.3); 4a aux output, 4b tuning + LPG, 4c-1 mod matrix,
-4c-2 LFO, 4d unison.
-Next: 4e plain functional JUCE UI bound to all
-params (engine selector with all 24 engines, per-engine parameter labels), 4f preset
-save/load. Then Phase 5 visualizers (oscilloscope, envelope display), Phase 6 custom
+4c-2 LFO, 4d unison, 4e plain functional UI.
+Next: 4f preset save/load. Then Phase 5 visualizers (oscilloscope, envelope display), Phase 6 custom
 graphics (film-strip/SVG knobs, custom look-and-feel), Phase 7 polish, signing,
 installers. Planned but not set up: GitHub Actions CI building on macOS and Windows.

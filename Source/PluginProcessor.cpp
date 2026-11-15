@@ -255,6 +255,17 @@ MutableAudioProcessor::MutableAudioProcessor()
             paramSpread, "Unison Spread",
             juce::NormalisableRange<float>(0.0f, 1.0f), 0.5f));
 
+    // --- Parameter state tree (MUST come after the last createAndAddParameter) --
+    //
+    // With the (processor, undoManager) APVTS constructor, JUCE requires the
+    // state ValueTree to be assigned once all parameters exist
+    // (createAndAddParameter asserts !state.isValid()).  Assigning it triggers
+    // valueTreeRedirected -> one child per parameter.  Without this, state was
+    // invalid, copyState().createXml() returned nullptr, and
+    // getStateInformation saved 0 bytes (DAW sessions reopened at defaults).
+    // The "State" tag must match the check in setStateInformation.
+    apvts_.state = juce::ValueTree (juce::Identifier ("State"));
+
     // --- Create the 8-voice pool (message thread) ----------------------------
     //
     // A minimal SynthesiserSound that applies to all notes and channels.
@@ -565,9 +576,9 @@ bool MutableAudioProcessor::hasEditor() const
 
 juce::AudioProcessorEditor* MutableAudioProcessor::createEditor()
 {
-    // TEMPORARY: use GenericAudioProcessorEditor so parameters appear as
-    // sliders.  Replace with the custom MutableAudioProcessorEditor in Phase 6.
-    return new juce::GenericAudioProcessorEditor (*this);
+    // Phase 4e: plain functional editor (stock JUCE components bound to the
+    // APVTS).  Custom graphics replace its look in Phase 6.
+    return new MutableAudioProcessorEditor (*this);
 }
 
 //==============================================================================

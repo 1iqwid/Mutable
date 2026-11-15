@@ -4,8 +4,8 @@ Last updated: 2026-11-14
 
 ## Current state
 
-Phases 1-3 complete (tags v0.1-v0.3). Phase 4 in progress: 4a, 4b, 4c-1, 4c-2, 4d done.
-Next task: 4e (plain functional JUCE UI).
+Phases 1-3 complete (tags v0.1-v0.3). Phase 4 in progress: 4a, 4b, 4c-1, 4c-2, 4d, 4e done.
+Next task: 4f (basic preset save and load).
 
 ## Build
 
@@ -78,8 +78,7 @@ cmake --build build --config Release --target MutableBench
   save/restore via copyState() -> createXml() -> toString() and XmlDocument::parse
   -> ValueTree::fromXml -> replaceState(). Parameters are read once per block via
   cached RangedAudioParameter* pointers (no string lookups on the audio thread).
-  createEditor returns juce::GenericAudioProcessorEditor (TEMPORARY; custom UI in
-  Phase 6).
+  (Save/restore did not actually work until the 4e fix; see Task 4e.)
 
 ## Phase 3 - Polyphony and envelopes (COMPLETE, v0.3)
 
@@ -105,8 +104,7 @@ cmake --build build --config Release --target MutableBench
 
 ## Phase 4 - Full parameters and placeholder UI (IN PROGRESS)
 
-Done: 4a, 4b, 4c-1, 4c-2, 4d. Remaining: 4e functional UI,
-4f presets. All 24 engines are selectable via the `engine` param (0..23, default 8).
+Done: 4a, 4b, 4c-1, 4c-2, 4d, 4e. Remaining: 4f presets. All 24 engines are selectable via the `engine` param (0..23, default 8).
 
 ### Task 4a - Aux output, Mix and Aux Level (DONE)
 - Plaits aux output resampled and ADSR-applied like the main output, blended per
@@ -178,9 +176,24 @@ Done: 4a, 4b, 4c-1, 4c-2, 4d. Remaining: 4e functional UI,
   unison latched per note, bend and LFO across layers, 8-note chord on a heavy
   engine without dropouts.
 
+### Task 4e - Plain functional UI + state save fix (DONE, 2026-11-14)
+- Source/PluginEditor.{h,cpp}: stock JUCE components bound via APVTS attachments
+  (editor never touches DSP). All 38 params: rotary knobs with formatted text
+  (fixed decimals + units), engine and LFO shape as combo boxes. Four rows of
+  sections: Engine/Output; Envelope/LPG/Tuning; Voices/LFO; Env/Vel/Wheel mod.
+  Window about 1024 x 620. Replaces GenericAudioProcessorEditor.
+- Source/EngineInfo.h: 24 engine names + per-engine Harmonics/Timbre/Morph
+  captions, checked against each engine's Render() in third_party/plaits. Captions
+  follow the engine combo (user and host changes).
+- MutableAudioProcessor::getApvts() and public param ID strings for the editor.
+- BUG FIX (pre-existing since Phase 2): apvts_.state was never assigned, so
+  copyState() was invalid and getStateInformation saved 0 bytes; DAW sets reopened
+  at defaults. Now `apvts_.state = ValueTree("State")` after the last param.
+  Sets saved before this fix contain no plugin state.
+- Verified in Ableton: layout, all knobs, engine captions, host automation of
+  engine, double-click reset, save/reopen of a Live set restores all values.
+
 ### Remaining Phase 4 tasks
-- 4e: plain functional JUCE UI bound to all params (engine as selector, 24 engines;
-  per-engine labels for harmonics/timbre/morph).
 - 4f: basic preset save and load.
 
 ## Phase 5 - Visualizers

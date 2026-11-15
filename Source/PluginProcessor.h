@@ -55,9 +55,12 @@ public:
     // (parameterChanged is not a JUCE 8 APVTS virtual — parameters are read
     //  directly via cached atomics in processBlock().)
 
-private:
+    /// The parameter tree, for the editor's attachments (message thread only).
+    juce::AudioProcessorValueTreeState& getApvts() noexcept { return apvts_; }
+
     //==========================================================================
     // Parameter IDs — stable strings, used for both the APVTS and state I/O.
+    // Public so the editor can bind attachments without duplicating strings.
     static const juce::String paramEngine;
     static const juce::String paramHarmonics;
     static const juce::String paramTimbre;
@@ -103,6 +106,7 @@ private:
     static const juce::String paramDetune;
     static const juce::String paramSpread;
 
+private:
     //==========================================================================
     // Maximum number of voices — a compile-time constant (Phase 3d).  All
     // kMaxVoices voices are allocated once and never added/removed at runtime;
