@@ -5,6 +5,7 @@
 #include <juce_audio_processors/juce_audio_processors.h>
 #include "PlaitsSynthVoice.h"
 #include "PresetManager.h"
+#include "ScopeBuffer.h"
 
 //==============================================================================
 /// The plugin processor.
@@ -61,6 +62,9 @@ public:
 
     /// Preset save / load (Phase 4f).  Message thread only.
     PresetManager& getPresetManager() noexcept { return presetManager_; }
+
+    /// Oscilloscope tap (Phase 5a).  Lock-free; the UI only reads it.
+    const ScopeBuffer& getScopeBuffer() const noexcept { return scope_; }
 
     //==========================================================================
     // Parameter IDs — stable strings, used for both the APVTS and state I/O.
@@ -180,6 +184,9 @@ private:
     // selected voice count into this atomic once per block; each voice reads it
     // (lock-free) in canPlaySound() to gate allocation/stealing.
     std::atomic<int> activeVoiceCount_;
+
+    // Phase 5a: final output (mono sum, after outGain) for the oscilloscope.
+    ScopeBuffer scope_;
 
     //==========================================================================
     // Build a skewed NormalisableRange for a time parameter so the short end

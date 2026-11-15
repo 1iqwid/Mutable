@@ -12,6 +12,7 @@ namespace
     constexpr int kTitleH  = 22;    // section title strip
     constexpr int kGap     = 10;    // gap between sections / rows
     constexpr int kBarH    = 30;    // preset bar height
+    constexpr int kVisH    = 200;   // visualizer row: section height incl. title
 
     const juce::Colour kBackground  { 0xff262626 };
     const juce::Colour kSectionFill { 0xff353535 };
@@ -107,7 +108,8 @@ void MutableAudioProcessorEditor::Choice::resized()
 //==============================================================================
 MutableAudioProcessorEditor::MutableAudioProcessorEditor (MutableAudioProcessor& p)
     : AudioProcessorEditor (&p),
-      processorRef (p)
+      processorRef (p),
+      scope_ (p.getScopeBuffer())
 {
     using P = MutableAudioProcessor;
     auto& apvts = processorRef.getApvts();
@@ -196,8 +198,10 @@ MutableAudioProcessorEditor::MutableAudioProcessorEditor (MutableAudioProcessor&
         width = juce::jmax (width, w);
     }
     const int height = kGap + kBarH + kGap
-                     + (int) rows_.size() * (kTitleH + kKnobH + kPad + kGap);
+                     + (int) rows_.size() * (kTitleH + kKnobH + kPad + kGap)
+                     + kVisH + kGap;
 
+    addAndMakeVisible (scope_);
     setupPresetBar();
     setSize (width, height);
 }
@@ -338,6 +342,13 @@ void MutableAudioProcessorEditor::paint (juce::Graphics& g)
         g.drawText (s.title, s.bounds.withHeight (kTitleH).reduced (kPad, 0),
                     juce::Justification::centredLeft);
     }
+
+    g.setColour (kSectionFill);
+    g.fillRoundedRectangle (scopeSection_.toFloat(), 6.0f);
+    g.setColour (juce::Colours::white);
+    g.setFont (juce::Font (juce::FontOptions (14.0f, juce::Font::bold)));
+    g.drawText ("Oscilloscope", scopeSection_.withHeight (kTitleH).reduced (kPad, 0),
+                juce::Justification::centredLeft);
 }
 
 void MutableAudioProcessorEditor::resized()
@@ -374,4 +385,9 @@ void MutableAudioProcessorEditor::resized()
         }
         y += kTitleH + kKnobH + kPad + kGap;
     }
+
+    // Visualizer row: full-width scope for now (envelope display joins in 5d).
+    scopeSection_ = { kGap, y, getWidth() - 2 * kGap, kVisH };
+    scope_.setBounds (scopeSection_.withTrimmedTop (kTitleH).reduced (kPad, 0)
+                                   .withTrimmedBottom (kPad));
 }

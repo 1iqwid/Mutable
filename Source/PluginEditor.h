@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "PluginProcessor.h"
+#include "ScopeView.h"
 
 //==============================================================================
 /// Phase 4e: plain functional editor.  Stock JUCE components only, bound to the
@@ -93,6 +94,10 @@ private:
     Knob*   harmonics_ = nullptr;
     Knob*   timbre_    = nullptr;
     Knob*   morph_     = nullptr;
+
+    // Phase 5: visualizer row below the parameter rows.
+    ScopeView scope_;
+    juce::Rectangle<int> scopeSection_;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (MutableAudioProcessorEditor)
 };

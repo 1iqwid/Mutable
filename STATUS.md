@@ -1,11 +1,11 @@
 # STATUS
 
-Last updated: 2026-11-14
+Last updated: 2026-11-15
 
 ## Current state
 
 Phases 1-4 complete (tags v0.1-v0.4).
-Next: Phase 5 (visualizers).
+Phase 5 (visualizers) in progress: 5a done. Next: 5b scope trigger + zoom.
 
 ## Build
 
@@ -213,6 +213,17 @@ Done: 4a, 4b, 4c-1, 4c-2, 4d, 4e, 4f. All 24 engines are selectable via the `eng
 - Envelope display: draws the ADSR curve from parameters even when idle, with a
   moving dot per active voice.
 - Later: spectrum analyser, per-voice meters.
+- Plan: 5a ring buffer + basic scope, 5b zero-crossing trigger + zoom, 5c Out/Aux
+  on the scope, 5d envelope curve, 5e per-voice dots.
+
+### Task 5a - Ring buffer + basic scope (DONE, 2026-11-15)
+- Source/ScopeBuffer.h: lock-free SPSC ring (16384 std::atomic<float>, relaxed;
+  write index release/acquire). processBlock pushes the mono sum (L+R)/2 of the
+  final output (after outGain and the NaN guard) in 256-sample stack chunks.
+- Source/ScopeView.{h,cpp}: 60 Hz timer copies the newest 20 ms and draws it.
+  Free-running (no trigger yet).
+- Editor: window taller by a 200 px full-width visualizer row at the bottom.
+- Verified in Ableton by Manny.
 
 ## Phase 6 - Custom graphics
 - Film strip or SVG knobs, custom look-and-feel classes, faux display skin around

@@ -75,6 +75,8 @@ Percent of one core = ms/s divided by 10 (past benchmark notes got this wrong by
   Source/EngineInfo.h: engine names + per-engine Harmonics/Timbre/Morph captions.
 - Source/PresetManager.{h,cpp}: .mutablepreset files in Documents/Mutable/Presets;
   applyState() (also used by setStateInformation) resets params to defaults first.
+- Source/ScopeBuffer.h (lock-free SPSC ring, audio -> UI) and Source/ScopeView.{h,cpp}
+  (60 Hz scope); processBlock pushes the final mono output.
 - State: apvts_.state = ValueTree("State") must stay AFTER the last param is added.
 
 ## Roadmap

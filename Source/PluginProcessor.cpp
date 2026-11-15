@@ -306,6 +306,7 @@ void MutableAudioProcessor::prepareToPlay (double sampleRate, int)
     // SynthesiserVoice::setCurrentPlaybackSampleRate() on every voice.
     // Must be called before the first renderNextBlock.
     synth_.setCurrentPlaybackSampleRate (sampleRate);
+    scope_.setSampleRate (sampleRate);
 
     // Prepare each voice's internal PlaitsVoice (creates/initialises the
     // plaits::Voice, BufferAllocator, and resamplers).  This is the
@@ -565,6 +566,23 @@ void MutableAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
         }
         if (bad)
             buffer.clear();
+    }
+
+    // ---- Oscilloscope tap (Phase 5a) ----------------------------------------
+    // Mono sum of the final output, in fixed stack chunks (no allocation).
+    if (numChannels > 0)
+    {
+        constexpr int kChunk = 256;
+        float mono[kChunk];
+        const float* l = buffer.getReadPointer (0);
+        const float* r = buffer.getReadPointer (numChannels > 1 ? 1 : 0);
+        for (int start = 0; start < numSamples; start += kChunk)
+        {
+            const int n = juce::jmin (kChunk, numSamples - start);
+            for (int i = 0; i < n; ++i)
+                mono[i] = 0.5f * (l[start + i] + r[start + i]);
+            scope_.push (mono, n);
+        }
     }
 }
 
