@@ -5,7 +5,7 @@ Last updated: 2026-11-15
 ## Current state
 
 Phases 1-4 complete (tags v0.1-v0.4).
-Phase 5 (visualizers) in progress: 5a, 5b done. Next: 5c Out/Aux on the scope.
+Phase 5 (visualizers) in progress: 5a-5c done. Next: 5d envelope curve.
 
 ## Build
 
@@ -235,6 +235,17 @@ Done: 4a, 4b, 4c-1, 4c-2, 4d, 4e, 4f. All 24 engines are selectable via the `eng
   but Plaits treats it as an offset (patch.engine + cv * 23), so every engine
   played ~12 slots higher and 13-24 all played Hi-Hat. Now 0.0, as in
   plaits_test.cc. Manny verified all 24 engines match their names.
+- Verified in Ableton by Manny.
+
+### Task 5c - Out/Aux overlay (DONE, 2026-11-15)
+- ScopeBuffer is now 2 channels (Out, Aux) with one shared write index; the 5a
+  final-output tap is gone.
+- Each voice sums its pre-Mix Out and Aux*auxLevel (after ADSR, voice gain and
+  unison norm, no pan) into a processor-owned 2 x 8192 tap (allocated in the
+  constructor, cleared per block); processBlock applies outGain and pushes it.
+  Blocks > 8192 samples are not shown.
+- ScopeView overlays Out (green) and Aux (amber) with a legend; one trigger point
+  (Out, else Aux) for both so relative phase is kept.
 - Verified in Ableton by Manny.
 
 ## Phase 6 - Custom graphics

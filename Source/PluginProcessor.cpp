@@ -291,6 +291,7 @@ MutableAudioProcessor::MutableAudioProcessor()
         auto* voice = new PlaitsSynthVoice();
         voice->setIndex (i);
         voice->setActiveVoiceCount (&activeVoiceCount_);
+        voice->setScopeTap (&scopeTap_);
         synth_.addVoice (voice);
     }
 }
@@ -536,6 +537,10 @@ void MutableAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     // No allocation happens here: each voice's renderNextBlock writes into
     // the output buffer's existing memory (PlaitsVoice::render uses its own
     // pre-allocated scratch buffers, and the resamplers are stateful).
+    // Scope tap (Phase 5c): voices ADD into it, so clear this block's span.
+    const int tapSamples = juce::jmin (numSamples, scopeTap_.getNumSamples());
+    scopeTap_.clear (0, tapSamples);
+
     synth_.renderNextBlock (buffer, midiMessages, 0, numSamples);
 
     // ---- Scale by outGain ---------------------------------------------------
@@ -568,21 +573,13 @@ void MutableAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
             buffer.clear();
     }
 
-    // ---- Oscilloscope tap (Phase 5a) ----------------------------------------
-    // Mono sum of the final output, in fixed stack chunks (no allocation).
-    if (numChannels > 0)
+    // ---- Oscilloscope (Phase 5c) --------------------------------------------
+    // Pre-Mix Out / Aux summed over voices; scale by outGain so the traces
+    // match the output level.  Blocks larger than the tap are not shown.
+    if (tapSamples == numSamples)
     {
-        constexpr int kChunk = 256;
-        float mono[kChunk];
-        const float* l = buffer.getReadPointer (0);
-        const float* r = buffer.getReadPointer (numChannels > 1 ? 1 : 0);
-        for (int start = 0; start < numSamples; start += kChunk)
-        {
-            const int n = juce::jmin (kChunk, numSamples - start);
-            for (int i = 0; i < n; ++i)
-                mono[i] = 0.5f * (l[start + i] + r[start + i]);
-            scope_.push (mono, n);
-        }
+        scopeTap_.applyGain (0, tapSamples, outGain);
+        scope_.push (scopeTap_.getReadPointer (0), scopeTap_.getReadPointer (1), tapSamples);
     }
 }
 

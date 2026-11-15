@@ -275,6 +275,10 @@ void PlaitsSynthVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer,
     float* accR    = acc_.getWritePointer (1);
     juce::FloatVectorOperations::clear (accL, numSamples);
     juce::FloatVectorOperations::clear (accR, numSamples);
+    float* scopeOut = scopeAcc_.getWritePointer (0);
+    float* scopeAux = scopeAcc_.getWritePointer (1);
+    juce::FloatVectorOperations::clear (scopeOut, numSamples);
+    juce::FloatVectorOperations::clear (scopeAux, numSamples);
 
     // Mix / auxLevel are ramped linearly across this block (start = previous
     // block's value, end = current value).
@@ -328,11 +332,15 @@ void PlaitsSynthVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer,
             const float mix = prevMix + mixDelta * t;
             const float auxLvl = prevAuxLevel + auxDelta * t;
 
-            const float blended =
-                outBuf[i] * (1.0f - mix) + auxBuf[i] * auxLvl * mix;
+            const float auxScaled = auxBuf[i] * auxLvl;
+            const float blended = outBuf[i] * (1.0f - mix) + auxScaled * mix;
 
             accL[i] += blended * gL;
             accR[i] += blended * gR;
+
+            // Scope (5c): pre-Mix signals, mono (no pan).
+            scopeOut[i] += outBuf[i];
+            scopeAux[i] += auxScaled;
         }
     }
 
@@ -349,6 +357,19 @@ void PlaitsSynthVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer,
         const float g = env * voiceGain;
         accL[i] *= g;
         accR[i] *= g;
+        scopeOut[i] *= g;
+        scopeAux[i] *= g;
+    }
+
+    // Scope tap (5c): add this voice's pre-Mix Out / Aux into the shared tap.
+    // Skipped if the tap is missing or this sub-block falls outside it.
+    if (scopeTap_ != nullptr && scopeTap_->getNumChannels() >= 2
+        && startSample + numSamples <= scopeTap_->getNumSamples())
+    {
+        juce::FloatVectorOperations::add (scopeTap_->getWritePointer (0) + startSample,
+                                          scopeOut, numSamples);
+        juce::FloatVectorOperations::add (scopeTap_->getWritePointer (1) + startSample,
+                                          scopeAux, numSamples);
     }
 
     // setLevel() only stores a value read once per render() call, so setting

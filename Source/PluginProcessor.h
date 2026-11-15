@@ -185,7 +185,11 @@ private:
     // (lock-free) in canPlaySound() to gate allocation/stealing.
     std::atomic<int> activeVoiceCount_;
 
-    // Phase 5a: final output (mono sum, after outGain) for the oscilloscope.
+    // Phase 5: oscilloscope.  Voices add pre-Mix Out / Aux into scopeTap_
+    // (2 x kScopeTapSize, allocated in the constructor, cleared each block);
+    // processBlock scales it by outGain and pushes it into scope_.
+    static constexpr int kScopeTapSize = 8192;
+    juce::AudioBuffer<float> scopeTap_ { 2, kScopeTapSize };
     ScopeBuffer scope_;
 
     //==========================================================================

@@ -71,6 +71,15 @@ public:
         activeCount_ = count;
     }
 
+    /// Phase 5c: processor-owned 2-channel scope tap (ch 0 = Out, ch 1 = Aux).
+    /// The processor clears it each block; renderNextBlock ADDS this voice's
+    /// pre-Mix Out / Aux (after envelope and voice gain) at startSample.
+    /// Message thread only (set once in the processor constructor).
+    void setScopeTap (juce::AudioBuffer<float>* tap) noexcept
+    {
+        scopeTap_ = tap;
+    }
+
     //==========================================================================
     /// Per-block parameter snapshot, written by the processor (audio thread)
     /// before each renderNextBlock call.  A plain struct — no locks needed
@@ -227,6 +236,8 @@ private:
             scratchAux_.setSize (1, numSamples);
         if (acc_.getNumSamples() < numSamples)
             acc_.setSize (2, numSamples);
+        if (scopeAcc_.getNumSamples() < numSamples)
+            scopeAcc_.setSize (2, numSamples);
     }
 
     /// Unison layer position in -1..+1 (outer layers at the ends, evenly
@@ -264,6 +275,8 @@ private:
     juce::AudioBuffer<float> scratch_;     // mono, per-layer render scratch (Out)
     juce::AudioBuffer<float> scratchAux_;  // mono, per-layer render scratch (Aux)
     juce::AudioBuffer<float> acc_;         // stereo, sum of all layers (L, R)
+    juce::AudioBuffer<float> scopeAcc_;    // Phase 5c: pre-Mix Out (0) / Aux (1), mono sums
+    juce::AudioBuffer<float>* scopeTap_ = nullptr;   // processor-owned, may be null
 
     // Previous per-block mix / auxLevel, used to ramp linearly across each
     // block (start = previous value, end = current value) so parameter changes
