@@ -4,6 +4,7 @@
 
 #include <juce_audio_basics/juce_audio_basics.h>
 #include "stmlib/utils/buffer_allocator.h"
+#include "Lfo.h"
 
 // Forward declaration – no Plaits headers needed in the public header.
 namespace plaits { class Voice; }
@@ -123,6 +124,21 @@ public:
     void setLevel (float level);
     void setUseExternalLevel (bool enabled) { useExternalLevel_ = enabled; }
 
+    /// LFO (Task 4c-2b).  shape 0..5, rateHz in Hz, and four bipolar (-1..+1)
+    /// modulation amounts for harmonics / timbre / morph / pitch.  The pitch
+    /// amount is expressed in semitones per unit LFO value (the caller scales
+    /// it, see PlaitsSynthVoice).  Stores only — no allocation, no locks.
+    void setLfo (int shape, float rateHz,
+                 float amtHarm, float amtTimbre, float amtMorph, float amtPitchSemis)
+    {
+        lfo_.setShape (shape);
+        lfo_.setRate (rateHz);
+        lfoAmtH_ = amtHarm;
+        lfoAmtT_ = amtTimbre;
+        lfoAmtM_ = amtMorph;
+        lfoAmtP_ = amtPitchSemis;
+    }
+
     /// Renders numSamples of float audio at the host sample rate.
     /// out and aux must each point to at least numSamples floats.
     /// aux may be nullptr if you don't need the aux channel.
@@ -171,6 +187,20 @@ private:
     float prevTimbre_    = 0.5f;   // last timbre    used (ramp start)
     float prevMorph_     = 0.5f;   // last morph     used (ramp start)
     float prevPitch_     = 0.0f;   // last pitch offset used (ramp start)
+
+    // LFO (Task 4c-2b).  Runs at the 48 kHz Plaits internal rate (NOT the host
+    // rate): prepare() calls lfo_.prepare(48000.0).  render() advances it once
+    // per 24-sample chunk (lfo_.advance(toGen)) and adds lfoV * lfoAmtX_ to the
+    // chunk's harmonics / timbre / morph / pitch — BEFORE clamping, and NOT part
+    // of the prev* ramp state.  lfoAmtH_/T_/M_ are 0..1 amounts (bipolar LFO ×
+    // amount); lfoAmtP_ is semitones per unit LFO value (caller-scaled).
+    // noteCounter_ feeds a deterministic S&H/phase reset on each noteOn().
+    mutable_plaits::Lfo lfo_;
+    float    lfoAmtH_ = 0.0f;   // harmonics mod amount
+    float    lfoAmtT_ = 0.0f;   // timbre    mod amount
+    float    lfoAmtM_ = 0.0f;   // morph     mod amount
+    float    lfoAmtP_ = 0.0f;   // pitch     mod amount (semitones)
+    uint32_t noteCounter_ = 0;  // LFO S&H reset seed source
 
     // Tracks the trigger value actually sent to Plaits on the last render()
     // call (true = trigger was held high, false = low / unpatched).

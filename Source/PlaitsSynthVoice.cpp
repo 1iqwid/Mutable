@@ -263,6 +263,16 @@ void PlaitsSynthVoice::renderNextBlock (juce::AudioBuffer<float>& outputBuffer,
     // Render the Plaits voice into our PRIVATE scratch buffers (NOT the shared
     // output buffer).  PlaitsVoice::render() overwrites its targets, which is
     // fine because these are voice-private.
+    // LFO (Task 4c-2b): push shape / rate and the four bipolar mod amounts.
+    // The pitch amount is scaled by 12.0f (semitones per unit LFO value),
+    // exactly like modEnvPitch (12.0f * (env*amtEnv + ...)) in the mod matrix.
+    plaitsVoice_.setLfo (
+        params_.lfoShape,
+        params_.lfoRate,
+        params_.modLfoHarmonics,
+        params_.modLfoTimbre,
+        params_.modLfoMorph,
+        12.0f * params_.modLfoPitch);
     plaitsVoice_.render (outBuf, auxBuf, numSamples);
 
     // Ramp mix / auxLevel linearly across this block (start = previous block's

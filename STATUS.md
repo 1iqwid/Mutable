@@ -1,11 +1,11 @@
 # STATUS
 
-Last updated: 2026-11-12
+Last updated: 2026-11-14
 
 ## Current state
 
-Phases 1-3 complete (tags v0.1-v0.3). Phase 4 in progress: 4a, 4b, 4c-1 done.
-Next task: 4c-2 (LFO as a fourth modulation source).
+Phases 1-3 complete (tags v0.1-v0.3). Phase 4 in progress: 4a, 4b, 4c-1, 4c-2 done.
+Next task: 4d (unison/detune).
 
 ## Build
 
@@ -105,7 +105,7 @@ cmake --build build --config Release --target MutableBench
 
 ## Phase 4 - Full parameters and placeholder UI (IN PROGRESS)
 
-Done: 4a, 4b, 4c-1. Remaining: 4c-2 LFO, 4d unison/detune, 4e functional UI,
+Done: 4a, 4b, 4c-1, 4c-2. Remaining: 4d unison/detune, 4e functional UI,
 4f presets. All 24 engines are selectable via the `engine` param (0..23, default 8).
 
 ### Task 4a - Aux output, Mix and Aux Level (DONE)
@@ -150,8 +150,19 @@ Done: 4a, 4b, 4c-1. Remaining: 4c-2 LFO, 4d unison/detune, 4e functional UI,
   - Temporary mod-wheel routing removed (no `modWheel_` left in Source).
   - Cosmetic compiler warning: unused variable `auxUsed` (PlaitsVoice.cpp ~line 333).
 
+### Task 4c-2 - LFO (DONE, 2026-11-14)
+- Source/Lfo.h: header-only, 6 shapes (Sine, Triangle, SawUp, SawDown, Square, S&H),
+  xorshift32 S&H, bipolar -1..+1. Params: lfoShape (choice, read via getIndex()),
+  lfoRate (0.05..20 Hz, skew centre 1 Hz), modLfoHarmonics/Timbre/Morph/Pitch (-1..+1).
+- One Lfo per PlaitsVoice, prepared at 48 kHz, reset per noteOn (phase 0, per-note
+  S&H seed). Advanced once per 24-sample chunk in render(); its value is added after
+  the ramp and before clamping, and is NOT part of the prev* ramp state.
+- Pitch amount scaled by 12 semitones per unit (same as modEnvPitch).
+- The 5-sample retrigger flush does not apply/advance the LFO (~0.1 ms, ignored).
+- Verified in Ableton: amount 0 = no change, sine timbre, S&H steps, pitch vibrato,
+  phase restart per note. Large-buffer smoothness NOT yet tested (see Known issues).
+
 ### Remaining Phase 4 tasks
-- 4c-2: LFO as a fourth modulation source.
 - 4d: unison and detune (optional).
 - 4e: plain functional JUCE UI bound to all params (engine as selector, 24 engines;
   per-engine labels for harmonics/timbre/morph).
@@ -175,6 +186,8 @@ Done: 4a, 4b, 4c-1. Remaining: 4c-2 LFO, 4d unison/detune, 4e functional UI,
 
 ## Known issues / not yet verified in a DAW
 (Delete each line once it has been tested.)
+- LFO at 20 Hz with a large buffer (2048) not tested for stepping (no audio
+  interface; buffer size unknown).
 - Retrigger noteOff -> noteOn (release then retrigger) not verified.
 - 8 simultaneous notes on heavy engines (Particle, Swarm, SixOp) not tested.
 - Polyphony summing: "press 3-4 keys, all should sound" check not recorded.

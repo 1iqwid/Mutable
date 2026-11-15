@@ -42,6 +42,8 @@ void PlaitsVoice::prepare (double hostSampleRate)
     // Reset resamplers and note / scratch state.
     resamplerOut_.reset (hostSampleRate);
     resamplerAux_.reset (hostSampleRate);
+    // LFO runs at the Plaits INTERNAL 48 kHz rate (NOT the host rate).
+    lfo_.prepare (48000.0);
     noteOn_          = false;
     retrigger_       = false;
     lastTriggerHigh_ = false;
@@ -72,6 +74,12 @@ void PlaitsVoice::noteOn (int midiNote, float velocity)
     // pitch offset (that would cause an audible glitch on note start).  This
     // is the "snap on note start" requirement of the mod matrix.
     snapToParams();
+
+    // Reset the LFO S&H/phase to a deterministic per-note value (Task 4c-2b).
+    // 2654435761u is a large odd prime multiplier (Knuth's MMIX constant), so
+    // consecutive notes get distinct, non-zero seeds.  No allocation, no locks.
+    ++noteCounter_;
+    lfo_.reset (noteCounter_ * 2654435761u + 1u);
 
     if (lastTriggerHigh_)
     {
@@ -260,10 +268,22 @@ void PlaitsVoice::render (float* out, float* aux, int numSamples)
         {
             const float frac =
                 std::min (1.0f, (rampGenerated + toGen) / static_cast<float> (neededIn));
-            const float h = rampHarmStart  + rampHarmDelta  * frac;
-            const float t = rampTimbStart  + rampTimbDelta  * frac;
-            const float m = rampMorphStart + rampMorphDelta * frac;
-            const float p = rampPitchStart + rampPitchDelta * frac;
+            float h = rampHarmStart  + rampHarmDelta  * frac;
+            float t = rampTimbStart  + rampTimbDelta  * frac;
+            float m = rampMorphStart + rampMorphDelta * frac;
+            float p = rampPitchStart + rampPitchDelta * frac;
+
+            // LFO (Task 4c-2b): advance once per chunk at the 48 kHz rate and
+            // add the bipolar LFO value (scaled by the per-destination amounts)
+            // to the chunk's harmonics / timbre / morph / pitch.  This is
+            // applied AFTER the ramp values are computed and BEFORE clamping.
+            // It is deliberately NOT part of the prev* ramp state (the block at
+            // the end of render() that updates prevHarmonics_ etc. is untouched).
+            const float lfoV = lfo_.advance (toGen);
+            h += lfoV * lfoAmtH_;
+            t += lfoV * lfoAmtT_;
+            m += lfoV * lfoAmtM_;
+            p += lfoV * lfoAmtP_;
 
             patch.harmonics = h < 0.0f ? 0.0f : (h > 1.0f ? 1.0f : h);
             patch.timbre    = t < 0.0f ? 0.0f : (t > 1.0f ? 1.0f : t);

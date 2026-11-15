@@ -396,6 +396,20 @@ void MutableAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     const float modWheelPitch     = (pModWheelPitch     != nullptr)
                                      ? static_cast<juce::AudioParameterFloat*>(pModWheelPitch)->get()     : 0.0f;
 
+    // ---- LFO (Task 4c-2b) ----------------------------------------------------
+    const int   lfoShape          = (pLfoShape          != nullptr)
+                                     ? static_cast<juce::AudioParameterChoice*>(pLfoShape)->getIndex()    : 0;
+    const float lfoRate           = (pLfoRate           != nullptr)
+                                     ? static_cast<juce::AudioParameterFloat*>(pLfoRate)->get()           : 1.0f;
+    const float modLfoHarmonics   = (pModLfoHarmonics   != nullptr)
+                                     ? static_cast<juce::AudioParameterFloat*>(pModLfoHarmonics)->get()   : 0.0f;
+    const float modLfoTimbre      = (pModLfoTimbre      != nullptr)
+                                     ? static_cast<juce::AudioParameterFloat*>(pModLfoTimbre)->get()      : 0.0f;
+    const float modLfoMorph       = (pModLfoMorph       != nullptr)
+                                     ? static_cast<juce::AudioParameterFloat*>(pModLfoMorph)->get()       : 0.0f;
+    const float modLfoPitch       = (pModLfoPitch       != nullptr)
+                                     ? static_cast<juce::AudioParameterFloat*>(pModLfoPitch)->get()       : 0.0f;
+
     // ---- Take a snapshot and give it to every voice -------------------------
     //
     // The snapshot is a plain struct written on the audio thread immediately
@@ -429,6 +443,12 @@ void MutableAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer,
     voiceParams.modWheelTimbre    = modWheelTimbre;
     voiceParams.modWheelMorph     = modWheelMorph;
     voiceParams.modWheelPitch     = modWheelPitch;
+    voiceParams.lfoShape          = lfoShape;
+    voiceParams.lfoRate           = lfoRate;
+    voiceParams.modLfoHarmonics   = modLfoHarmonics;
+    voiceParams.modLfoTimbre      = modLfoTimbre;
+    voiceParams.modLfoMorph       = modLfoMorph;
+    voiceParams.modLfoPitch       = modLfoPitch;
 
     for (int i = 0; i < synth_.getNumVoices(); ++i)
     {

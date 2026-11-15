@@ -114,6 +114,18 @@ public:
         float modWheelTimbre    = 0.5f;   // default 0.5 (was the temp CC1->timbre)
         float modWheelMorph     = 0.0f;
         float modWheelPitch     = 0.0f;
+        // ---- Task 4c-2b: LFO (bipolar -1..+1 amounts) -----------------------
+        // lfoShape is the Lfo.h shape index (0=Sine,1=Triangle,2=SawUp,
+        // 3=SawDown,4=Square,5=S&H).  lfoRate is Hz (0.05..20).  The four mod
+        // amounts are bipolar -1..+1 (same convention as the mod matrix above).
+        // The LFO pitch amount is a bipolar amount like the others; PlaitsSynthVoice
+        // scales it by 12 (semitones per unit), exactly like modEnvPitch.
+        int   lfoShape         = 0;
+        float lfoRate          = 1.0f;
+        float modLfoHarmonics  = 0.0f;
+        float modLfoTimbre     = 0.0f;
+        float modLfoMorph      = 0.0f;
+        float modLfoPitch      = 0.0f;
     };
 
     /// Called from the processor's processBlock (AUDIO THREAD) immediately
